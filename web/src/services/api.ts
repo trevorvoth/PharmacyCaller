@@ -62,7 +62,7 @@ export interface SearchStatus {
     pharmacyId: string;
     pharmacyName: string;
     address: string;
-    status: 'pending' | 'calling' | 'on_hold' | 'ready' | 'connected' | 'completed' | 'failed';
+    status: 'pending' | 'calling' | 'on_hold' | 'ready' | 'connected' | 'completed' | 'failed' | 'voicemail';
     hasMedication: boolean | null;
     isHumanReady: boolean;
     isVoicemailReady: boolean;
