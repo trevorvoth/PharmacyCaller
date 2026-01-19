@@ -47,6 +47,7 @@
     "@typescript-eslint/parser": "^6.20.0",
     "eslint": "^8.56.0",
     "prisma": "^5.9.0",
+    "socket.io-client": "^4.8.3",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3",
     "vitest": "^1.2.2"

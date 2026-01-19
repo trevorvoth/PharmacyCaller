@@ -15,14 +15,21 @@ interface MetricDefinition {
 // Define all metrics
 export const METRICS: Record<string, MetricDefinition> = {
   // Call metrics
+  CALL_COUNT: { name: 'call_count', type: 'counter', description: 'Total calls received' },
   CALLS_INITIATED: { name: 'calls_initiated', type: 'counter', description: 'Total calls initiated' },
   CALLS_COMPLETED: { name: 'calls_completed', type: 'counter', description: 'Total calls completed' },
   CALLS_FAILED: { name: 'calls_failed', type: 'counter', description: 'Total calls failed' },
   CALLS_CONNECTED: { name: 'calls_connected', type: 'counter', description: 'Calls where patient connected' },
+  CALL_SUCCESS: { name: 'call_success', type: 'counter', description: 'Successful call completions' },
+  CALL_FAILED: { name: 'call_failed', type: 'counter', description: 'Failed call attempts' },
 
   // IVR metrics
   IVR_SUCCESS: { name: 'ivr_success', type: 'counter', description: 'Successful IVR navigations' },
   IVR_FAILED: { name: 'ivr_failed', type: 'counter', description: 'Failed IVR navigations' },
+
+  // Detection metrics
+  HUMAN_DETECTED: { name: 'human_detected', type: 'counter', description: 'Times human pharmacist detected' },
+  VOICEMAIL_DETECTED: { name: 'voicemail_detected', type: 'counter', description: 'Times voicemail detected' },
 
   // Search metrics
   SEARCHES_STARTED: { name: 'searches_started', type: 'counter', description: 'Total searches started' },

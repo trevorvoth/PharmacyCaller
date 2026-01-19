@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import { createServer } from 'http';
 import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { initSentry, sentryErrorHandler } from './utils/sentry.js';
@@ -9,6 +10,8 @@ import { registerAuthHook } from './middleware/auth.js';
 import { defaultRateLimit, authRateLimit } from './middleware/rateLimit.js';
 import { authRoutes } from './routes/auth.js';
 import { pharmacyRoutes } from './routes/pharmacies.js';
+import { twilioWebhookRoutes } from './routes/webhooks/twilio.js';
+import { initWebSocketServer, closeWebSocketServer } from './websocket/server.js';
 
 // Initialize Sentry first
 initSentry();
@@ -45,8 +48,13 @@ app.get('/health', async (_request, _reply) => {
   };
 });
 
-// Apply rate limiting to auth routes
+// Apply rate limiting (skip for webhooks which have their own auth)
 app.addHook('onRequest', async (request, reply) => {
+  // Skip rate limiting for Twilio webhooks (they have signature verification)
+  if (request.url.startsWith('/webhooks/')) {
+    return;
+  }
+
   if (request.url.startsWith('/auth/')) {
     await authRateLimit(request, reply);
   } else if (!request.url.startsWith('/health')) {
@@ -57,6 +65,7 @@ app.addHook('onRequest', async (request, reply) => {
 // Register routes
 await app.register(authRoutes);
 await app.register(pharmacyRoutes);
+await app.register(twilioWebhookRoutes);
 
 // Global error handler
 app.setErrorHandler((error, request, reply) => {
@@ -82,6 +91,7 @@ app.setErrorHandler((error, request, reply) => {
 const shutdown = async (): Promise<void> => {
   logger.info('Shutting down gracefully...');
 
+  await closeWebSocketServer();
   await app.close();
   await prisma.$disconnect();
   await redis.quit();
@@ -104,6 +114,14 @@ const start = async (): Promise<void> => {
     await redis.ping();
     logger.info('Redis connected');
 
+    // Get the underlying HTTP server for Socket.io
+    const httpServer = createServer();
+
+    // Initialize WebSocket server
+    initWebSocketServer(httpServer);
+    logger.info('WebSocket server initialized');
+
+    // Start Fastify on the HTTP server
     await app.listen({ port: env.PORT, host: '0.0.0.0' });
     logger.info({ port: env.PORT }, 'Server started');
   } catch (error) {
