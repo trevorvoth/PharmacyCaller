@@ -92,7 +92,7 @@ export const costTracker = {
   },
 
   async getDailyCostSummary(date?: string): Promise<DailyCostSummary> {
-    const targetDate = date ?? new Date().toISOString().split('T')[0];
+    const targetDate = date ?? new Date().toISOString().split('T')[0]!;
     const startOfDay = new Date(targetDate + 'T00:00:00Z');
     const endOfDay = new Date(targetDate + 'T23:59:59Z');
 

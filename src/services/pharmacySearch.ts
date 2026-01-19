@@ -126,7 +126,7 @@ export const pharmacySearchService = {
           distance: Math.round(distance),
         };
       })
-      .filter((result): result is PharmacySearchResult => result !== null)
+      .filter((result): result is NonNullable<typeof result> => result !== null)
       .sort((a, b) => (a.distance ?? 0) - (b.distance ?? 0)); // Sort by distance
 
     logger.info({

@@ -1,19 +1,22 @@
-import Redis from 'ioredis';
+import RedisLib from 'ioredis';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
+const Redis = RedisLib.default ?? RedisLib;
+type RedisClient = InstanceType<typeof Redis>;
+
 const globalForRedis = globalThis as unknown as {
-  redis: Redis | undefined;
+  redis: RedisClient | undefined;
 };
 
-function createRedisClient(): Redis {
+function createRedisClient(): RedisClient {
   const client = new Redis(env.REDIS_URL, {
     maxRetriesPerRequest: 3,
-    retryStrategy(times) {
+    retryStrategy(times: number) {
       const delay = Math.min(times * 50, 2000);
       return delay;
     },
-    reconnectOnError(err) {
+    reconnectOnError(err: Error) {
       const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
       return targetErrors.some(e => err.message.includes(e));
     },
@@ -23,7 +26,7 @@ function createRedisClient(): Redis {
     logger.info('Redis client connected');
   });
 
-  client.on('error', (err) => {
+  client.on('error', (err: Error) => {
     logger.error({ err }, 'Redis client error');
   });
 
@@ -80,4 +83,4 @@ export const redisHelpers = {
   },
 };
 
-export type { Redis };
+export type { RedisClient };

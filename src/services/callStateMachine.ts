@@ -197,7 +197,7 @@ class CallStateMachine extends EventEmitter {
     const historyKey = `${CALL_HISTORY_PREFIX}${callId}`;
     const history = await redis.lrange(historyKey, 0, -1);
 
-    return history.map((h) => JSON.parse(h) as StateTransitionEvent);
+    return history.map((h: string) => JSON.parse(h) as StateTransitionEvent);
   }
 
   /**

@@ -3,7 +3,7 @@ import { env } from '../config/env.js';
 
 const isDevelopment = env.NODE_ENV === 'development';
 
-export const logger = pino({
+export const logger = pino.default({
   level: env.LOG_LEVEL,
   ...(isDevelopment && {
     transport: {
@@ -23,7 +23,7 @@ export const logger = pino({
     censor: '[REDACTED]',
   },
   formatters: {
-    level(label) {
+    level(label: string) {
       return { level: label };
     },
   },

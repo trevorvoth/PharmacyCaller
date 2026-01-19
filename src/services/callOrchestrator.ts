@@ -331,7 +331,7 @@ export const callOrchestrator = {
       await prisma.pharmacySearch.update({
         where: { id: searchId },
         data: {
-          completed: true,
+          status: 'COMPLETED',
           completedAt: searchState.completedAt ? new Date(searchState.completedAt) : new Date(),
         },
       });

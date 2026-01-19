@@ -17,7 +17,8 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient({
 });
 
 if (env.NODE_ENV === 'development') {
-  prisma.$on('query', (e) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (prisma.$on as any)('query', (e: any) => {
     logger.debug({
       query: e.query,
       params: e.params,
@@ -26,11 +27,13 @@ if (env.NODE_ENV === 'development') {
   });
 }
 
-prisma.$on('error', (e) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(prisma.$on as any)('error', (e: any) => {
   logger.error({ err: e }, 'Database error');
 });
 
-prisma.$on('warn', (e) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(prisma.$on as any)('warn', (e: any) => {
   logger.warn({ message: e.message }, 'Database warning');
 });
 

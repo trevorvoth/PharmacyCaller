@@ -4,8 +4,10 @@ import 'dotenv/config';
 const envSchema = z.object({
   // Server
   PORT: z.string().default('3000').transform(Number),
+  HOST: z.string().default('localhost'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
+  WEBHOOK_BASE_URL: z.string().url().optional(),
 
   // Database
   DATABASE_URL: z.string().url(),

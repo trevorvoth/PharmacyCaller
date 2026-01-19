@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { env } from '../config/env.js';
 
 export interface JwtPayload {
@@ -9,9 +9,10 @@ export interface JwtPayload {
 }
 
 export function generateToken(payload: Omit<JwtPayload, 'iat' | 'exp'>): string {
-  return jwt.sign(payload, env.JWT_SECRET, {
-    expiresIn: env.JWT_EXPIRES_IN,
-  });
+  const options: SignOptions = {
+    expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+  };
+  return jwt.sign(payload, env.JWT_SECRET, options);
 }
 
 export function verifyToken(token: string): JwtPayload {

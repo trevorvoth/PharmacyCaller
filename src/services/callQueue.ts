@@ -92,7 +92,7 @@ export const callQueue = {
     const queueKey = `${QUEUE_PREFIX}${searchId}`;
     const members = await redis.zrange(queueKey, 0, -1);
 
-    return members.map((m) => JSON.parse(m) as QueuedCall);
+    return members.map((m: string) => JSON.parse(m) as QueuedCall);
   },
 
   /**
