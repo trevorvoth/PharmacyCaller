@@ -10,6 +10,9 @@ import { registerAuthHook } from './middleware/auth.js';
 import { defaultRateLimit, authRateLimit } from './middleware/rateLimit.js';
 import { authRoutes } from './routes/auth.js';
 import { pharmacyRoutes } from './routes/pharmacies.js';
+import { searchRoutes } from './routes/searches.js';
+import { callRoutes } from './routes/calls.js';
+import { tokenRoutes } from './routes/token.js';
 import { twilioWebhookRoutes } from './routes/webhooks/twilio.js';
 import { initWebSocketServer, closeWebSocketServer } from './websocket/server.js';
 
@@ -65,6 +68,9 @@ app.addHook('onRequest', async (request, reply) => {
 // Register routes
 await app.register(authRoutes);
 await app.register(pharmacyRoutes);
+await app.register(searchRoutes);
+await app.register(callRoutes);
+await app.register(tokenRoutes);
 await app.register(twilioWebhookRoutes);
 
 // Global error handler
