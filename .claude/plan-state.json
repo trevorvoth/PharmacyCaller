@@ -1,0 +1,20 @@
+{
+  "session_id": "plan-2026-01-18-1201",
+  "started_at": "2026-01-18T12:01:00Z",
+  "project_hash": "initial",
+  "phase": "complete",
+  "research_complete": true,
+  "human_decisions": [
+    {
+      "phase": "init",
+      "decision": "System architecture planning",
+      "timestamp": "2026-01-18T12:01:00Z"
+    },
+    {
+      "phase": "brain-jam",
+      "decision": "Requirements confirmed: AI-powered pharmacy calling with patient handoff, web-first, low-cost MVP",
+      "timestamp": "2026-01-18T12:05:00Z"
+    }
+  ],
+  "abandoned": false
+}

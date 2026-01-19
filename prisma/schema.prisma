@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String           @id @default(cuid())
+  email            String           @unique
+  password         String
+  dailySearchCount Int              @default(0)
+  lastSearchDate   DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  calls            Call[]
+  searches         PharmacySearch[]
+
+  @@index([email])
+}
+
+model Call {
+  id              String      @id @default(cuid())
+  userId          String
+  pharmacyId      String
+  status          CallStatus  @default(CREATED)
+  twilioCallSid   String?     @unique
+  conferenceSid   String?
+  cost            Float       @default(0)
+  duration        Int         @default(0)  // seconds
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  endedAt         DateTime?
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pharmacy        PharmacyResult    @relation(fields: [pharmacyId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([twilioCallSid])
+  @@index([status])
+}
+
+model PharmacySearch {
+  id              String        @id @default(cuid())
+  userId          String
+  medicationQuery String
+  latitude        Float
+  longitude       Float
+  status          SearchStatus  @default(ACTIVE)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  completedAt     DateTime?
+
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  results         PharmacyResult[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model PharmacyResult {
+  id            String              @id @default(cuid())
+  searchId      String
+  pharmacyName  String
+  address       String
+  phone         String
+  latitude      Float
+  longitude     Float
+  placeId       String?             // Google Places ID
+  chain         PharmacyChain?
+  callStatus    PharmacyCallStatus  @default(PENDING)
+  hasMedication Boolean?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  search        PharmacySearch      @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  calls         Call[]
+
+  @@index([searchId])
+  @@index([callStatus])
+}
+
+enum CallStatus {
+  CREATED
+  DIALING
+  IVR
+  IVR_FAILED
+  HOLD
+  HUMAN_DETECTED
+  VOICEMAIL
+  BRIDGING
+  CONNECTED
+  ENDING
+  ENDED
+  FAILED
+}
+
+enum SearchStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum PharmacyCallStatus {
+  PENDING
+  CALLING
+  ON_HOLD
+  READY       // Human or voicemail ready
+  CONNECTED   // Patient joined
+  COMPLETED
+  FAILED
+}
+
+enum PharmacyChain {
+  CVS
+  WALGREENS
+  RITE_AID
+  WALMART
+  COSTCO
+  KROGER
+  PUBLIX
+  HEB
+  SAFEWAY
+  OTHER
+}

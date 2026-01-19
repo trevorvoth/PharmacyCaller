@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(claudikins-kernel:git-workflow)",
+      "Bash(npm install)",
+      "Bash(npm run test:run:*)",
+      "Bash(npm test:*)",
+      "Bash(docker compose:*)",
+      "Bash(tasklist /FI \"IMAGENAME eq Docker Desktop.exe\")"
+    ]
+  }
+}
