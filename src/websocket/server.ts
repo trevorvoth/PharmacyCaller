@@ -61,13 +61,11 @@ export function initWebSocketServer(httpServer: HTTPServer): SocketIOServer {
   });
 
   // Authentication middleware
-  io.use(async (socket, next) => {
-    try {
-      await authenticateWebSocket(socket, next);
-    } catch (error) {
+  io.use((socket, next) => {
+    authenticateWebSocket(socket, next).catch((error) => {
       wsLogger.error({ err: error }, 'WebSocket authentication error');
       next(new Error('Authentication failed'));
-    }
+    });
   });
 
   // Connection handler
@@ -100,7 +98,7 @@ function handleConnection(socket: Socket): void {
 
   // Join user's personal room
   const userRoom = getUserRoom(user.userId);
-  socket.join(userRoom);
+  void socket.join(userRoom);
 
   wsLogger.debug({
     socketId: socket.id,
@@ -122,7 +120,7 @@ function handleConnection(socket: Socket): void {
     }
 
     const searchRoom = getSearchRoom(searchId);
-    socket.join(searchRoom);
+    void socket.join(searchRoom);
 
     wsLogger.debug({
       socketId: socket.id,
@@ -140,7 +138,7 @@ function handleConnection(socket: Socket): void {
     }
 
     const searchRoom = getSearchRoom(searchId);
-    socket.leave(searchRoom);
+    void socket.leave(searchRoom);
 
     wsLogger.debug({
       socketId: socket.id,

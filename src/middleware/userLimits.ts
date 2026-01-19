@@ -20,8 +20,8 @@ export async function checkSearchLimit(
     const currentCount = await userService.getDailySearchCount(userId);
 
     // Add limit headers
-    reply.header('X-Search-Limit', DAILY_SEARCH_LIMIT);
-    reply.header('X-Search-Remaining', Math.max(0, DAILY_SEARCH_LIMIT - currentCount));
+    void reply.header('X-Search-Limit', DAILY_SEARCH_LIMIT);
+    void reply.header('X-Search-Remaining', Math.max(0, DAILY_SEARCH_LIMIT - currentCount));
 
     if (currentCount >= DAILY_SEARCH_LIMIT) {
       logger.warn({

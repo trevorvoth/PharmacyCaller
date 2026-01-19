@@ -154,12 +154,10 @@ class PatientTimeout extends EventEmitter {
 
     timeoutLogger.info({ intervalMs: CHECK_INTERVAL_MS }, 'Starting timeout checker');
 
-    this.checkIntervalId = setInterval(async () => {
-      try {
-        await this.checkTimeouts();
-      } catch (error) {
+    this.checkIntervalId = setInterval(() => {
+      this.checkTimeouts().catch((error) => {
         timeoutLogger.error({ err: error }, 'Error checking timeouts');
-      }
+      });
     }, CHECK_INTERVAL_MS);
   }
 

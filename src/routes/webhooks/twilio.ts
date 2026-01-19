@@ -134,7 +134,7 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
   </Connect>
 </Response>`;
 
-      reply.type('text/xml');
+      void reply.type('text/xml');
       return reply.send(twiml);
     }
   );
@@ -244,7 +244,7 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
 <Response>
 </Response>`;
 
-      reply.type('text/xml');
+      void reply.type('text/xml');
       return reply.send(twiml);
     }
   );
@@ -283,7 +283,7 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
   <Hangup/>
 </Response>`;
 
-      reply.type('text/xml');
+      void reply.type('text/xml');
       return reply.send(twiml);
     }
   );

@@ -54,9 +54,9 @@ export function createRateLimiter(config: RateLimitConfig = {}) {
       const ttl = await redis.ttl(key);
 
       // Set rate limit headers
-      reply.header('X-RateLimit-Limit', maxRequests);
-      reply.header('X-RateLimit-Remaining', Math.max(0, maxRequests - current));
-      reply.header('X-RateLimit-Reset', Math.ceil(Date.now() / 1000) + ttl);
+      void reply.header('X-RateLimit-Limit', maxRequests);
+      void reply.header('X-RateLimit-Remaining', Math.max(0, maxRequests - current));
+      void reply.header('X-RateLimit-Reset', Math.ceil(Date.now() / 1000) + ttl);
 
       if (current > maxRequests) {
         logger.warn({
