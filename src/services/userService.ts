@@ -7,6 +7,8 @@ import type { User } from '@prisma/client';
 export interface CreateUserInput {
   email: string;
   password: string;
+  name: string;
+  birthday: Date;
 }
 
 export interface LoginInput {
@@ -31,7 +33,7 @@ export class UserServiceError extends Error {
 
 export const userService = {
   async createUser(input: CreateUserInput): Promise<AuthResult> {
-    const { email, password } = input;
+    const { email, password, name, birthday } = input;
 
     // Check if user already exists
     const existingUser = await prisma.user.findUnique({
@@ -49,6 +51,8 @@ export const userService = {
       data: {
         email: email.toLowerCase(),
         password: hashedPassword,
+        name,
+        birthday,
       },
     });
 

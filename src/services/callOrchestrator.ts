@@ -8,6 +8,8 @@ import { CallState, CallStateData } from '../types/callStates.js';
 import { twilioConfig } from '../config/twilio.js';
 import { env } from '../config/env.js';
 import { v4 as uuidv4 } from 'uuid';
+import { demoSimulator } from './demoSimulator.js';
+import { pharmacyTracker } from './pharmacyTracker.js';
 
 const orchestratorLogger = logger.child({ service: 'call-orchestrator' });
 
@@ -134,6 +136,7 @@ export const callOrchestrator = {
       callId,
       pharmacyName: pharmacy.name,
       phoneNumber: pharmacy.phoneNumber,
+      demoMode: env.DEMO_MODE,
     }, 'Initiating call to pharmacy');
 
     try {
@@ -155,9 +158,31 @@ export const callOrchestrator = {
 
       // Transition to DIALING
       await callStateMachine.transition(callId, CallState.DIALING, {
-        reason: 'Initiating Twilio call',
+        reason: env.DEMO_MODE ? 'Demo: Initiating simulated call' : 'Initiating Twilio call',
         conferenceName,
       });
+
+      // Update pharmacy tracker with the call ID - this is critical for status updates
+      await pharmacyTracker.updatePharmacyCallStarted(searchId, pharmacy.id, callId);
+
+      // Use demo simulator or real Twilio
+      if (env.DEMO_MODE) {
+        // Start simulated call (async - runs in background)
+        void demoSimulator.simulateCall({
+          callId,
+          searchId,
+          pharmacyId: pharmacy.id,
+          pharmacyName: pharmacy.name,
+          phoneNumber: pharmacy.phoneNumber,
+        });
+
+        orchestratorLogger.info({
+          callId,
+          pharmacyName: pharmacy.name,
+        }, 'Demo call simulation started');
+
+        return callStateMachine.getState(callId);
+      }
 
       // Build webhook URLs
       const baseUrl = env.WEBHOOK_BASE_URL || `https://${env.HOST}:${env.PORT}`;

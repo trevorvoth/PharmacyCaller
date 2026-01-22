@@ -8,6 +8,7 @@ import { patientTimeout } from '../services/patientTimeout.js';
 import { addParticipantToConference, getConferenceByName } from '../services/twilio/conference.js';
 import { CallState } from '../types/callStates.js';
 import { twilioClient } from '../services/twilio/client.js';
+import { env } from '../config/env.js';
 
 const callLogger = logger.child({ service: 'calls-routes' });
 
@@ -54,7 +55,8 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      if (!callData.twilioCallSid) {
+      // In demo mode, we don't need a real Twilio session
+      if (!env.DEMO_MODE && !callData.twilioCallSid) {
         return reply.status(400).send({
           error: 'Call not available',
           message: 'This call does not have an active Twilio session.',
@@ -67,14 +69,58 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
           reason: 'Patient joining call',
         });
 
-        // Get or create conference
         const conferenceName = callData.conferenceName ?? `conf-${callData.searchId}-${callId}`;
+
+        // In demo mode, skip Twilio conference setup
+        if (env.DEMO_MODE) {
+          // Update call state to CONNECTED
+          await callStateMachine.transition(callId, CallState.CONNECTED, {
+            reason: 'Patient connected (demo mode)',
+            conferenceName,
+          });
+
+          // Mark in queue as connected
+          await callQueue.setConnectedCall(callData.searchId, {
+            callId,
+            searchId: callData.searchId,
+            pharmacyName: callData.pharmacyName,
+            connectedAt: Date.now(),
+            patientCallSid: null,
+          });
+
+          // End other calls that have humans waiting
+          await callQueue.endOtherCallsOnJoin(callData.searchId, callId);
+
+          // Cancel any pending timeout
+          await patientTimeout.acknowledge(callData.searchId, callId);
+
+          // Update tracker
+          await pharmacyTracker.updateFromCallState(callData.searchId, callId, CallState.CONNECTED);
+
+          callLogger.info({
+            callId,
+            conferenceName,
+            pharmacyName: callData.pharmacyName,
+            demoMode: true,
+          }, 'Patient joined call successfully (demo mode)');
+
+          return reply.send({
+            success: true,
+            conferenceName,
+            conferenceSid: `demo-${callId}`,
+            pharmacyName: callData.pharmacyName,
+            message: `Connected to ${callData.pharmacyName}`,
+            demoMode: true,
+          });
+        }
+
+        // Real Twilio mode
         let conference = await getConferenceByName(conferenceName);
 
         // If no conference exists, the pharmacy call needs to be moved to one
         if (!conference) {
           // Update the pharmacy call to join a conference
-          await twilioClient.calls(callData.twilioCallSid).update({
+          await twilioClient.calls(callData.twilioCallSid!).update({
             twiml: `<Response><Dial><Conference>${conferenceName}</Conference></Dial></Response>`,
           });
 

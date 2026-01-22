@@ -14,6 +14,7 @@ const notificationLogger = logger.child({ service: 'notifications' });
  * Notification payloads
  */
 export interface PharmacistReadyPayload {
+  searchId: string;
   callId: string;
   pharmacyId: string;
   pharmacyName: string;
@@ -22,6 +23,7 @@ export interface PharmacistReadyPayload {
 }
 
 export interface VoicemailReadyPayload {
+  searchId: string;
   callId: string;
   pharmacyId: string;
   pharmacyName: string;

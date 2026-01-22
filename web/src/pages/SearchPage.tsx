@@ -18,21 +18,43 @@ export default function SearchPage() {
   const [error, setError] = useState('');
   const [highlightedPharmacyId, setHighlightedPharmacyId] = useState<string | null>(null);
 
-  // Fetch initial search data
+  // Fetch search data and poll for updates
   useEffect(() => {
     if (!searchId) return;
 
-    searchApi
-      .getStatus(searchId)
-      .then((res) => {
-        setSearch(res.data);
-      })
-      .catch((err) => {
-        setError(err.response?.data?.error || 'Failed to load search');
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    let isCancelled = false;
+
+    const fetchStatus = async () => {
+      try {
+        const res = await searchApi.getStatus(searchId);
+        if (!isCancelled) {
+          setSearch(res.data);
+          setError('');
+        }
+      } catch (err: unknown) {
+        if (!isCancelled) {
+          const axiosError = err as { response?: { data?: { error?: string } } };
+          setError(axiosError.response?.data?.error || 'Failed to load search');
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    // Initial fetch
+    void fetchStatus();
+
+    // Poll every 3 seconds
+    const interval = setInterval(() => {
+      void fetchStatus();
+    }, 3000);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
   }, [searchId]);
 
   // Join WebSocket room for real-time updates

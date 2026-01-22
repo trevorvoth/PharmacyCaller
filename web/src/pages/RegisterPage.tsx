@@ -11,10 +11,21 @@ export default function RegisterPage() {
   const { theme, toggleTheme } = useTheme();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [birthday, setBirthday] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+
+  // Password requirement checks
+  const passwordRequirements = [
+    { label: 'At least 8 characters', met: password.length >= 8 },
+    { label: 'One uppercase letter (A-Z)', met: /[A-Z]/.test(password) },
+    { label: 'One lowercase letter (a-z)', met: /[a-z]/.test(password) },
+    { label: 'One number (0-9)', met: /[0-9]/.test(password) },
+  ];
+
+  const allRequirementsMet = passwordRequirements.every((req) => req.met);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -25,15 +36,20 @@ export default function RegisterPage() {
       return;
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (!allRequirementsMet) {
+      setError('Password does not meet all requirements');
+      return;
+    }
+
+    if (!birthday) {
+      setError('Birthday is required');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      await register(email, password, name);
+      await register(email, password, name, birthday);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
@@ -106,14 +122,49 @@ export default function RegisterPage() {
                 autoComplete="email"
               />
               <Input
-                label="Password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
+                label="Birthday"
+                type="date"
+                value={birthday}
+                onChange={(e) => setBirthday(e.target.value)}
                 required
-                autoComplete="new-password"
+                autoComplete="bday"
               />
+              <div>
+                <Input
+                  label="Password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Create a strong password"
+                  required
+                  autoComplete="new-password"
+                />
+                {password.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {passwordRequirements.map((req, index) => (
+                      <li
+                        key={index}
+                        className={`flex items-center text-xs ${
+                          req.met
+                            ? 'text-green-600 dark:text-green-400'
+                            : 'text-gray-400 dark:text-gray-500'
+                        }`}
+                      >
+                        {req.met ? (
+                          <svg className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5 mr-1.5 flex-shrink-0" fill="none" viewBox="0 0 20 20" stroke="currentColor">
+                            <circle cx="10" cy="10" r="7" strokeWidth="2" />
+                          </svg>
+                        )}
+                        {req.label}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               <Input
                 label="Confirm Password"
                 type="password"

@@ -7,6 +7,10 @@ import { metrics, METRICS } from '../services/metrics.js';
 const signupSchema = z.object({
   email: z.string().email('Invalid email format'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
+  name: z.string().min(1, 'Name is required').max(100),
+  birthday: z.string().refine((val) => !isNaN(Date.parse(val)), {
+    message: 'Invalid date format',
+  }),
 });
 
 const loginSchema = z.object({
@@ -26,7 +30,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const { email, password } = parseResult.data;
+    const { email, password, name, birthday } = parseResult.data;
 
     // Validate password strength
     const passwordCheck = validatePasswordStrength(password);
@@ -38,7 +42,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const result = await userService.createUser({ email, password });
+      const result = await userService.createUser({
+        email,
+        password,
+        name,
+        birthday: new Date(birthday),
+      });
 
       await metrics.increment(METRICS.USERS_REGISTERED);
 

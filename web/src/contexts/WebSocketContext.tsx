@@ -54,15 +54,25 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     const token = localStorage.getItem('token');
     const newSocket = io({
       auth: { token },
-      transports: ['websocket'],
+      transports: ['polling', 'websocket'],
+      path: '/socket.io',
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
 
     newSocket.on('connect', () => {
+      console.log('[WebSocket] Connected:', newSocket.id);
       setIsConnected(true);
     });
 
-    newSocket.on('disconnect', () => {
+    newSocket.on('disconnect', (reason) => {
+      console.log('[WebSocket] Disconnected:', reason);
       setIsConnected(false);
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('[WebSocket] Connection error:', error.message);
     });
 
     setSocket(newSocket);
@@ -75,9 +85,9 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const onSearchUpdate = useCallback(
     (callback: (data: SearchUpdate) => void) => {
       if (!socket) return () => {};
-      socket.on('search:update', callback);
+      socket.on('search_update', callback);
       return () => {
-        socket.off('search:update', callback);
+        socket.off('search_update', callback);
       };
     },
     [socket]
@@ -86,9 +96,14 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const onPharmacistReady = useCallback(
     (callback: (data: PharmacistReady) => void) => {
       if (!socket) return () => {};
-      socket.on('pharmacist:ready', callback);
+      // Listen for both pharmacist_ready and voicemail_ready
+      const handlePharmacistReady = (data: PharmacistReady) => callback({ ...data, type: 'human' });
+      const handleVoicemailReady = (data: PharmacistReady) => callback({ ...data, type: 'voicemail' });
+      socket.on('pharmacist_ready', handlePharmacistReady);
+      socket.on('voicemail_ready', handleVoicemailReady);
       return () => {
-        socket.off('pharmacist:ready', callback);
+        socket.off('pharmacist_ready', handlePharmacistReady);
+        socket.off('voicemail_ready', handleVoicemailReady);
       };
     },
     [socket]
@@ -97,9 +112,9 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const onCallStateChange = useCallback(
     (callback: (data: CallStateChange) => void) => {
       if (!socket) return () => {};
-      socket.on('call:state', callback);
+      socket.on('call_status_update', callback);
       return () => {
-        socket.off('call:state', callback);
+        socket.off('call_status_update', callback);
       };
     },
     [socket]
@@ -108,7 +123,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const joinSearch = useCallback(
     (searchId: string) => {
       if (socket) {
-        socket.emit('search:join', { searchId });
+        socket.emit('subscribe:search', searchId);
       }
     },
     [socket]
@@ -117,7 +132,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const leaveSearch = useCallback(
     (searchId: string) => {
       if (socket) {
-        socket.emit('search:leave', { searchId });
+        socket.emit('unsubscribe:search', searchId);
       }
     },
     [socket]
