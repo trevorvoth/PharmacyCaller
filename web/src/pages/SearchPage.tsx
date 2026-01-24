@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { searchApi, callApi, pharmacyApi, type SearchStatus } from '../services/api';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import { useToast } from '../components/Toast';
 import SearchHeader from '../components/SearchHeader';
 import PharmacyList, { type PharmacyItem } from '../components/PharmacyList';
+import PharmacyMap from '../components/PharmacyMap';
+import MapListLayout from '../components/MapListLayout';
 import { type PharmacyStatus } from '../components/PharmacyCard';
 
 export default function SearchPage() {
@@ -17,6 +19,28 @@ export default function SearchPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [highlightedPharmacyId, setHighlightedPharmacyId] = useState<string | null>(null);
+  const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Track pharmacy list refs for scrolling
+  const pharmacyRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Get user's current location
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        },
+        () => {
+          // Silently fail - we'll use search location as fallback
+        }
+      );
+    }
+  }, []);
 
   // Fetch search data and poll for updates
   useEffect(() => {
@@ -89,6 +113,13 @@ export default function SearchPage() {
 
       // Highlight the pharmacy
       setHighlightedPharmacyId(data.pharmacyId);
+      setSelectedPharmacyId(data.pharmacyId);
+
+      // Scroll to the pharmacy in the list
+      const ref = pharmacyRefs.current.get(data.pharmacyId);
+      if (ref) {
+        ref.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
 
       // Show toast notification
       addToast(
@@ -118,7 +149,7 @@ export default function SearchPage() {
         if (!prev) return prev;
 
         const pharmacies = prev.pharmacies.map((p) => {
-          if (p.pharmacyId === data.callId.split('-')[0]) {
+          if (p.callId === data.callId) {
             return {
               ...p,
               status: mapCallStateToStatus(data.newState),
@@ -188,6 +219,30 @@ export default function SearchPage() {
     }
   }, [searchId, search, addToast]);
 
+  // Handle pharmacy selection from map
+  const handlePharmacySelect = useCallback((pharmacyId: string) => {
+    setSelectedPharmacyId(pharmacyId);
+    // Scroll to the pharmacy in the list
+    const ref = pharmacyRefs.current.get(pharmacyId);
+    if (ref) {
+      ref.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, []);
+
+  // Handle pharmacy click from list (for bidirectional highlight)
+  const handlePharmacyClick = useCallback((pharmacyId: string) => {
+    setSelectedPharmacyId(pharmacyId);
+  }, []);
+
+  // Register pharmacy ref for scrolling
+  const registerPharmacyRef = useCallback((pharmacyId: string, ref: HTMLDivElement | null) => {
+    if (ref) {
+      pharmacyRefs.current.set(pharmacyId, ref);
+    } else {
+      pharmacyRefs.current.delete(pharmacyId);
+    }
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -214,9 +269,10 @@ export default function SearchPage() {
     pharmacyId: p.pharmacyId,
     pharmacyName: p.pharmacyName,
     address: p.address,
-    status: mapSearchStatusToPharmacyStatus(p.status, p.isHumanReady, p.isVoicemailReady),
+    status: p.hasMedication === false ? 'completed' : mapSearchStatusToPharmacyStatus(p.status, p.isHumanReady, p.isVoicemailReady),
     hasMedication: p.hasMedication,
-    callId: p.pharmacyId, // Assuming callId matches pharmacyId for now
+    callId: p.callId ?? p.pharmacyId,
+    distance: p.distance,
   }));
 
   return (
@@ -231,11 +287,29 @@ export default function SearchPage() {
         onMarkFound={search.status === 'ACTIVE' ? handleMarkFound : undefined}
       />
 
-      <PharmacyList
-        pharmacies={pharmacies}
-        highlightedPharmacyId={highlightedPharmacyId}
-        onJoinCall={handleJoinCall}
-        onMarkNotFound={handleMarkNotFound}
+      <MapListLayout
+        map={
+          <PharmacyMap
+            pharmacies={search.pharmacies}
+            searchLocation={search.searchLocation}
+            userLocation={userLocation}
+            selectedPharmacyId={selectedPharmacyId}
+            onPharmacySelect={handlePharmacySelect}
+            onJoinCall={(pharmacyId, callId) => handleJoinCall(callId, pharmacyId)}
+            onMarkNotFound={handleMarkNotFound}
+          />
+        }
+        list={
+          <PharmacyList
+            pharmacies={pharmacies}
+            highlightedPharmacyId={highlightedPharmacyId}
+            selectedPharmacyId={selectedPharmacyId}
+            onJoinCall={handleJoinCall}
+            onMarkNotFound={handleMarkNotFound}
+            onPharmacyClick={handlePharmacyClick}
+            registerRef={registerPharmacyRef}
+          />
+        }
       />
     </div>
   );

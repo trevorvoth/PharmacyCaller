@@ -16,9 +16,18 @@ interface PharmacyCardProps {
   status: PharmacyStatus;
   hasMedication?: boolean | null;
   isHighlighted?: boolean;
+  distance?: number | null; // Distance in meters
   onJoinCall?: () => void;
   onMarkNotFound?: () => void;
   children?: ReactNode;
+}
+
+function formatDistance(meters: number): string {
+  const miles = meters / 1609.34;
+  if (miles < 0.1) {
+    return `${Math.round(meters)} m`;
+  }
+  return `${miles.toFixed(1)} mi`;
 }
 
 const statusConfig: Record<PharmacyStatus, { label: string; color: string; bgColor: string }> = {
@@ -70,12 +79,14 @@ export default function PharmacyCard({
   status,
   hasMedication,
   isHighlighted,
+  distance,
   onJoinCall,
   onMarkNotFound,
 }: PharmacyCardProps) {
   const config = statusConfig[status];
   const isReady = status === 'ready';
-  const showActions = isReady || status === 'connected';
+  // Don't show actions if medication is already marked as not available
+  const showActions = (isReady || status === 'connected') && hasMedication !== false;
 
   return (
     <div
@@ -102,7 +113,14 @@ export default function PharmacyCard({
               </span>
             )}
           </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{address}</p>
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+            <p className="truncate">{address}</p>
+            {distance != null && (
+              <span className="flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
+                {formatDistance(distance)}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

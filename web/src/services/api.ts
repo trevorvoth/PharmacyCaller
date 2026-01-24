@@ -32,7 +32,23 @@ export interface StartSearchRequest {
   longitude: number;
   radiusMeters?: number;
   maxPharmacies?: number;
+  chainFilter?: string[];
+  openNow?: boolean;
 }
+
+export const PHARMACY_CHAINS = [
+  'CVS',
+  'Walgreens',
+  'Rite Aid',
+  'Walmart',
+  'Costco',
+  'Kroger',
+  'Publix',
+  'HEB',
+  'Safeway',
+] as const;
+
+export type PharmacyChain = typeof PHARMACY_CHAINS[number];
 
 export interface PharmacyResult {
   id: string;
@@ -66,7 +82,15 @@ export interface SearchStatus {
     hasMedication: boolean | null;
     isHumanReady: boolean;
     isVoicemailReady: boolean;
+    callId: string | null;
+    latitude: number;
+    longitude: number;
+    distance: number | null; // Distance in meters from search location
   }>;
+  searchLocation: {
+    latitude: number;
+    longitude: number;
+  };
 }
 
 export interface CallStatus {
@@ -115,5 +139,5 @@ export const pharmacyApi = {
 };
 
 export const tokenApi = {
-  getToken: () => api.get<{ token: string; identity: string; expiresIn: number }>('/token'),
+  getToken: () => api.get<{ token: string; identity: string; expiresIn: number; demoMode?: boolean }>('/token'),
 };

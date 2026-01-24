@@ -14,8 +14,10 @@ const StartSearchSchema = z.object({
   medicationQuery: z.string().min(1).max(200),
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
-  radiusMeters: z.number().min(1000).max(50000).optional().default(8000),
-  maxPharmacies: z.number().min(1).max(10).optional().default(3),
+  radiusMeters: z.number().min(1000).max(50000).optional().default(24140), // 15 miles
+  maxPharmacies: z.number().min(1).max(50).optional().default(20),
+  chainFilter: z.array(z.string()).optional(), // Filter by pharmacy chains (e.g., ['CVS', 'Walgreens'])
+  openNow: z.boolean().optional(), // Only include currently open pharmacies
 });
 
 const MarkFoundSchema = z.object({
@@ -47,32 +49,19 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const { medicationQuery, latitude, longitude, radiusMeters, maxPharmacies } = parseResult.data;
+      const { medicationQuery, latitude, longitude, radiusMeters, maxPharmacies, chainFilter, openNow } = parseResult.data;
 
       searchLogger.info({
         userId: user.userId,
         medicationQuery,
         latitude,
         longitude,
+        chainFilter,
+        openNow,
       }, 'Starting pharmacy search');
 
       try {
-        // Find nearby pharmacies
-        const pharmacies = await pharmacySearchService.searchNearby({
-          latitude,
-          longitude,
-          radiusMeters,
-          maxResults: maxPharmacies * 2, // Get extra in case some fail
-        });
-
-        if (pharmacies.length === 0) {
-          return reply.status(404).send({
-            error: 'No pharmacies found',
-            message: 'No pharmacies found in your area. Try increasing the search radius.',
-          });
-        }
-
-        // Create search record in database
+        // Create search record in database first to get the ID for pagination state
         const search = await prisma.pharmacySearch.create({
           data: {
             userId: user.userId,
@@ -81,6 +70,30 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
             longitude,
           },
         });
+
+        // Find nearby pharmacies with filters (auto-paginates to collect 25 with phone numbers)
+        const searchResponse = await pharmacySearchService.searchNearby({
+          latitude,
+          longitude,
+          radiusMeters,
+          maxResults: 20, // Per-page limit (Google Places max)
+          chainFilter,
+          openNow,
+          searchId: search.id, // Pass search ID for pagination state storage
+          targetPharmacyCount: 25, // Collect 25 pharmacies with valid phone numbers
+          maxPages: 5, // Cap API costs at 5 pages (~$0.015/search)
+        });
+
+        const pharmacies = searchResponse.pharmacies;
+
+        if (pharmacies.length === 0) {
+          // Delete the search record we created since there are no results
+          await prisma.pharmacySearch.delete({ where: { id: search.id } });
+          return reply.status(404).send({
+            error: 'No pharmacies found',
+            message: 'No pharmacies found in your area. Try increasing the search radius or adjusting filters.',
+          });
+        }
 
         // Create pharmacy result records
         const pharmacyResults = await Promise.all(
@@ -113,14 +126,26 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
           })),
         });
 
-        // Start parallel calls
+        // Create a map of Google Places ID -> Prisma ID for the initial pharmacies
+        const placeIdToPrismaId = new Map<string, string>();
+        for (let i = 0; i < pharmacyResults.length; i++) {
+          const result = pharmacyResults[i];
+          const place = pharmacies[i];
+          if (result && place) {
+            placeIdToPrismaId.set(place.id, result.id);
+          }
+        }
+
+        // Start parallel calls - pass ALL pharmacies (including reserves)
+        // For initial pharmacies, use Prisma ID; for reserves, use Google Places ID
         await callOrchestrator.startSearch({
           userId: user.userId,
           searchId: search.id,
           medicationQuery,
-          pharmacies: pharmacyResults.map((p) => ({
-            id: p.id,
-            name: p.pharmacyName,
+          pharmacies: pharmacies.map((p: PharmacySearchResult) => ({
+            id: placeIdToPrismaId.get(p.id) ?? p.id, // Use Prisma ID if available
+            placeId: p.id, // Keep the Google Places ID for reserves
+            name: p.name,
             phoneNumber: p.phone,
             address: p.address,
           })),
@@ -195,6 +220,40 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
       const summary = await pharmacyTracker.getSearchSummary(id);
       const checklist = await pharmacyTracker.getChecklist(id);
 
+      // Create a map of pharmacy coordinates from DB results
+      const coordinatesMap = new Map(
+        search.results.map((r) => [r.id, { latitude: r.latitude, longitude: r.longitude }])
+      );
+
+      // Haversine formula for distance calculation
+      const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+        const R = 6371e3; // Earth's radius in meters
+        const φ1 = (lat1 * Math.PI) / 180;
+        const φ2 = (lat2 * Math.PI) / 180;
+        const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+        const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+          Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // Distance in meters
+      };
+
+      // Merge checklist with coordinates and distance, then sort by distance
+      const pharmaciesWithCoords = checklist.map((p) => {
+        const coords = coordinatesMap.get(p.pharmacyId);
+        const lat = coords?.latitude ?? 0;
+        const lng = coords?.longitude ?? 0;
+        const distance = lat && lng ? calculateDistance(search.latitude, search.longitude, lat, lng) : null;
+        return {
+          ...p,
+          latitude: lat,
+          longitude: lng,
+          distance: distance ? Math.round(distance) : null, // Distance in meters
+        };
+      }).sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
+
       return reply.send({
         id: search.id,
         medicationQuery: search.medicationQuery,
@@ -204,7 +263,12 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
         foundAt: summary?.foundAt,
         activeCalls: summary?.activeCalls ?? 0,
         readyCalls: summary?.readyCalls ?? 0,
-        pharmacies: checklist,
+        pharmacies: pharmaciesWithCoords,
+        // Include search origin for map centering
+        searchLocation: {
+          latitude: search.latitude,
+          longitude: search.longitude,
+        },
       });
     }
   );
