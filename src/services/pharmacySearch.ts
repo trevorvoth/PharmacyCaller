@@ -162,20 +162,35 @@ function extractCityState(address: string): { city: string; state: string } {
   return { city: '', state: '' };
 }
 
+// Default radius: 5 miles in meters
+const DEFAULT_RADIUS_METERS = 8047;
+// Expanded radius when filtering: 15 miles in meters
+const FILTERED_RADIUS_METERS = 24140;
+// Default max pages for normal searches
+const DEFAULT_MAX_PAGES = 10;
+// Expanded max pages when filtering (to compensate for post-fetch filtering)
+const FILTERED_MAX_PAGES = 30;
+
 export const pharmacySearchService = {
   async searchNearby(request: PharmacySearchRequest): Promise<PharmacySearchResponse> {
     const {
       latitude,
       longitude,
-      radiusMeters,
+      radiusMeters: requestedRadius,
       maxResults,
       chainFilter,
       openNow,
       searchId,
       targetPharmacyCount = 25,
-      maxPages = 5,
+      maxPages: requestedMaxPages,
       enableNppesEnrichment = true,
     } = request;
+
+    // When chain filter is active, use expanded limits to compensate for post-fetch filtering
+    // Post-fetch filtering can drastically reduce per-page results (e.g., 20 results → 2-3 matching)
+    const hasChainFilter = chainFilter && chainFilter.length > 0;
+    const radiusMeters = requestedRadius ?? (hasChainFilter ? FILTERED_RADIUS_METERS : DEFAULT_RADIUS_METERS);
+    const maxPages = requestedMaxPages ?? (hasChainFilter ? FILTERED_MAX_PAGES : DEFAULT_MAX_PAGES);
 
     logger.info({
       latitude,
@@ -188,6 +203,8 @@ export const pharmacySearchService = {
       targetPharmacyCount,
       maxPages,
       enableNppesEnrichment,
+      hasChainFilter,
+      usingExpandedLimits: hasChainFilter && !requestedRadius && !requestedMaxPages,
     }, 'Starting pharmacy search with auto-pagination');
 
     // Collect all results across pages

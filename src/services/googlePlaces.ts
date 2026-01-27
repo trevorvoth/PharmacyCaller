@@ -79,13 +79,16 @@ export const googlePlacesService = {
 
     try {
       // Build request body
-      // Using rankPreference: 'DISTANCE' to get closest pharmacies first
-      // Note: This may return fewer total results but ensures nearest pharmacies are included
+      // When chain filtering: use POPULARITY to get more results (we filter post-fetch anyway)
+      // When NOT filtering: use DISTANCE to get closest pharmacies first
+      // Note: DISTANCE returns fewer total results but nearest first; POPULARITY returns more with pagination
+      const hasChainFilter = chainFilter && chainFilter.length > 0;
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const requestBody: Record<string, any> = {
         includedTypes: ['pharmacy'],
         maxResultCount: maxResults,
-        rankPreference: 'DISTANCE',
+        rankPreference: hasChainFilter ? 'POPULARITY' : 'DISTANCE',
       };
 
       // If we have a page token, we only need the token (not location/filters)
@@ -131,19 +134,42 @@ export const googlePlacesService = {
       // Filter by chain name if specified (post-fetch filtering since Nearby Search doesn't support textQuery)
       if (chainFilter && chainFilter.length > 0) {
         const chainPatterns = chainFilter.map((chain) => chain.toLowerCase());
+        const beforeChainFilter = places.length;
         places = places.filter((place) => {
           const name = place.displayName?.text?.toLowerCase() ?? '';
           return chainPatterns.some((chain) => name.includes(chain));
         });
+        const afterChainFilter = places.length;
+
+        // Log filter effectiveness to help debug sparse results
+        logger.info({
+          chainFilter,
+          beforeFilter: beforeChainFilter,
+          afterFilter: afterChainFilter,
+          filtered: beforeChainFilter - afterChainFilter,
+          filterEffectiveness: beforeChainFilter > 0
+            ? Math.round((afterChainFilter / beforeChainFilter) * 100)
+            : 0,
+        }, 'Chain filter applied - results before/after');
       }
 
       // Filter by open status if requested (server-side filtering as backup)
       if (openNow) {
+        const beforeOpenFilter = places.length;
         places = places.filter((place) => {
           const isOpen = place.currentOpeningHours?.openNow ?? place.regularOpeningHours?.openNow;
           // Include places that are open OR where we don't have hours data (don't exclude unknowns)
           return isOpen !== false;
         });
+        const afterOpenFilter = places.length;
+
+        if (beforeOpenFilter !== afterOpenFilter) {
+          logger.info({
+            beforeFilter: beforeOpenFilter,
+            afterFilter: afterOpenFilter,
+            filtered: beforeOpenFilter - afterOpenFilter,
+          }, 'Open now filter applied - results before/after');
+        }
       }
 
       const results: PlaceResult[] = places

@@ -72,16 +72,18 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
         });
 
         // Find nearby pharmacies with filters (auto-paginates to collect 50 with phone numbers)
+        // Note: radiusMeters and maxPages are omitted to let the service apply filter-aware defaults
+        // When chainFilter is active, service uses expanded limits (15mi radius, 30 pages)
         const searchResponse = await pharmacySearchService.searchNearby({
           latitude,
           longitude,
-          radiusMeters,
+          radiusMeters: chainFilter?.length ? undefined : radiusMeters, // Let service expand radius when filtering
           maxResults: 20, // Per-page limit (Google Places max)
           chainFilter,
           openNow,
           searchId: search.id, // Pass search ID for pagination state storage
           targetPharmacyCount: 50, // Collect 50 pharmacies with valid phone numbers
-          maxPages: 10, // Cap API costs at 10 pages (~$0.32/search max)
+          // maxPages omitted - service uses 30 when filtering, 10 otherwise
         });
 
         const pharmacies = searchResponse.pharmacies;
