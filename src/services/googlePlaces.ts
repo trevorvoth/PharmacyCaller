@@ -52,7 +52,7 @@ interface GooglePlacesResponse {
   nextPageToken?: string;
 }
 
-const DEFAULT_RADIUS_METERS = 24140; // 15 miles
+const DEFAULT_RADIUS_METERS = 8047; // 5 miles
 const DEFAULT_MAX_RESULTS = 20; // Google Places API max per page
 
 export const googlePlacesService = {
@@ -79,12 +79,13 @@ export const googlePlacesService = {
 
     try {
       // Build request body
-      // Note: We don't use rankPreference: 'DISTANCE' as it limits results
-      // Instead, we sort by distance ourselves in pharmacySearch.ts after fetching
+      // Using rankPreference: 'DISTANCE' to get closest pharmacies first
+      // Note: This may return fewer total results but ensures nearest pharmacies are included
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const requestBody: Record<string, any> = {
         includedTypes: ['pharmacy'],
         maxResultCount: maxResults,
+        rankPreference: 'DISTANCE',
       };
 
       // If we have a page token, we only need the token (not location/filters)
@@ -146,7 +147,6 @@ export const googlePlacesService = {
       }
 
       const results: PlaceResult[] = places
-        .filter((place) => place.nationalPhoneNumber || place.internationalPhoneNumber)
         .map((place) => ({
           id: place.id,
           displayName: place.displayName?.text ?? 'Unknown Pharmacy',

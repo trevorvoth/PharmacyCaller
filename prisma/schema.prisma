@@ -68,7 +68,8 @@ model PharmacyResult {
   searchId      String
   pharmacyName  String
   address       String
-  phone         String
+  phone         String?
+  phoneSource   PhoneSource?        // Where the phone number came from
   latitude      Float
   longitude     Float
   placeId       String?             // Google Places ID
@@ -127,4 +128,9 @@ enum PharmacyChain {
   HEB
   SAFEWAY
   OTHER
+}
+
+enum PhoneSource {
+  GOOGLE
+  NPPES
 }

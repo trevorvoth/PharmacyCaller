@@ -6,6 +6,8 @@ import { callQueue } from './callQueue.js';
 import { notificationService } from './notifications.js';
 import { metrics, METRICS } from './metrics.js';
 import { CallState } from '../types/callStates.js';
+import { demoSimulator } from './demoSimulator.js';
+import { callOrchestrator } from './callOrchestrator.js';
 import { PharmacyCallStatus, SearchStatus } from '@prisma/client';
 
 const trackerLogger = logger.child({ service: 'pharmacy-tracker' });
@@ -17,7 +19,7 @@ export interface PharmacyStatus {
   pharmacyId: string;
   pharmacyName: string;
   address: string;
-  phone: string;
+  phone: string | null;
   callStatus: PharmacyCallStatus;
   hasMedication: boolean | null;
   callId: string | null;
@@ -53,7 +55,7 @@ export const pharmacyTracker = {
       id: string;
       pharmacyName: string;
       address: string;
-      phone: string;
+      phone: string | null;
     }>;
   }): Promise<SearchTrackerState> {
     const { searchId, userId, medicationQuery, pharmacyResults } = params;
@@ -178,8 +180,15 @@ export const pharmacyTracker = {
         break;
 
       case CallState.VOICEMAIL:
-        pharmacy.callStatus = PharmacyCallStatus.READY;
+        pharmacy.callStatus = PharmacyCallStatus.FAILED;
+        pharmacy.hasMedication = false; // Mark as unavailable
         pharmacy.isVoicemailReady = true;
+        state.activeCalls = Math.max(0, state.activeCalls - 1);
+        state.failedCalls++;
+        // Voicemail - move on to the next pharmacy (if not cancelled)
+        if (state.status !== SearchStatus.CANCELLED) {
+          void callOrchestrator.startNextCall(searchId);
+        }
         break;
 
       case CallState.CONNECTED:
@@ -192,6 +201,10 @@ export const pharmacyTracker = {
         pharmacy.callStatus = PharmacyCallStatus.FAILED;
         state.failedCalls++;
         state.activeCalls = Math.max(0, state.activeCalls - 1);
+        // Start calling the next pharmacy (if not cancelled)
+        if (state.status !== SearchStatus.CANCELLED) {
+          void callOrchestrator.startNextCall(searchId);
+        }
         break;
 
       case CallState.ENDED:
@@ -285,30 +298,56 @@ export const pharmacyTracker = {
     if (!pharmacy) return;
 
     pharmacy.hasMedication = false;
+    pharmacy.callStatus = PharmacyCallStatus.COMPLETED;
     pharmacy.lastUpdated = Date.now();
+
+    // Cancel any ongoing demo simulation for this call
+    if (pharmacy.callId) {
+      demoSimulator.cancelSimulation(pharmacy.callId);
+    }
 
     await this.saveState(state);
 
     // Update database
     await prisma.pharmacyResult.update({
       where: { id: pharmacyId },
-      data: { hasMedication: false },
+      data: { 
+        hasMedication: false,
+        callStatus: PharmacyCallStatus.COMPLETED,
+      },
+    });
+
+    // Send status update notification
+    await notificationService.sendSearchUpdate(searchId, {
+      searchId,
+      status: state.status === SearchStatus.ACTIVE ? 'active' :
+              state.status === SearchStatus.COMPLETED ? 'completed' : 'cancelled',
+      activeCalls: state.activeCalls,
+      connectedCalls: state.connectedCalls,
+      failedCalls: state.failedCalls,
     });
 
     trackerLogger.info({
       searchId,
       pharmacyId,
       pharmacyName: pharmacy.pharmacyName,
-    }, 'Medication not found at pharmacy');
+    }, 'Medication not found at pharmacy - call completed');
+
+    // Start calling the next pharmacy (this may add new pharmacies from reserves/pagination)
+    await callOrchestrator.startNextCall(searchId);
+
+    // Re-fetch state since startNextCall may have added new pharmacies
+    const updatedState = await this.getState(searchId);
+    if (!updatedState) return;
 
     // Check if all pharmacies have been checked
-    const allChecked = state.pharmacies.every(
+    const allChecked = updatedState.pharmacies.every(
       (p) => p.hasMedication !== null || p.callStatus === PharmacyCallStatus.FAILED
     );
 
-    if (allChecked && !state.foundAt) {
-      state.status = SearchStatus.COMPLETED;
-      await this.saveState(state);
+    if (allChecked && !updatedState.foundAt) {
+      updatedState.status = SearchStatus.COMPLETED;
+      await this.saveState(updatedState);
 
       await prisma.pharmacySearch.update({
         where: { id: searchId },
@@ -345,6 +384,9 @@ export const pharmacyTracker = {
 
     // End all calls
     await callQueue.endAllCalls(searchId);
+
+    // Cancel any pending demo simulations
+    demoSimulator.cancelSearchSimulations(searchId);
 
     trackerLogger.info({ searchId }, 'Search cancelled');
   },
@@ -397,6 +439,56 @@ export const pharmacyTracker = {
     return state.pharmacies.filter((p) => p.isHumanReady || p.isVoicemailReady);
   },
 
+
+  /**
+   * Adds a new pharmacy to the tracker (from reserves)
+   */
+  async addPharmacy(searchId: string, pharmacy: {
+    id: string;
+    pharmacyName: string;
+    address: string;
+    phone?: string;
+  }): Promise<void> {
+    const state = await this.getState(searchId);
+    if (!state) return;
+
+    // Check if already exists
+    if (state.pharmacies.some((p) => p.pharmacyId === pharmacy.id)) {
+      return;
+    }
+
+    state.pharmacies.push({
+      pharmacyId: pharmacy.id,
+      pharmacyName: pharmacy.pharmacyName,
+      address: pharmacy.address,
+      phone: pharmacy.phone ?? null,
+      callStatus: PharmacyCallStatus.PENDING,
+      hasMedication: null,
+      callId: null,
+      callState: null,
+      isHumanReady: false,
+      isVoicemailReady: false,
+      lastUpdated: Date.now(),
+    });
+
+    await this.saveState(state);
+
+    // Send update to frontend
+    await notificationService.sendSearchUpdate(searchId, {
+      searchId,
+      status: 'active',
+      activeCalls: state.activeCalls,
+      connectedCalls: state.connectedCalls,
+      failedCalls: state.failedCalls,
+    });
+
+    trackerLogger.info({
+      searchId,
+      pharmacyId: pharmacy.id,
+      pharmacyName: pharmacy.pharmacyName,
+    }, 'Added reserve pharmacy to search');
+  },
+
   /**
    * Gets the checklist data for the UI
    */
@@ -408,6 +500,7 @@ export const pharmacyTracker = {
     hasMedication: boolean | null;
     isHumanReady: boolean;
     isVoicemailReady: boolean;
+    callId: string | null;
   }>> {
     const state = await this.getState(searchId);
     if (!state) return [];
@@ -420,6 +513,7 @@ export const pharmacyTracker = {
       hasMedication: p.hasMedication,
       isHumanReady: p.isHumanReady,
       isVoicemailReady: p.isVoicemailReady,
+      callId: p.callId,
     }));
   },
 };

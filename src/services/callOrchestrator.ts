@@ -10,6 +10,7 @@ import { env } from '../config/env.js';
 import { v4 as uuidv4 } from 'uuid';
 import { demoSimulator } from './demoSimulator.js';
 import { pharmacyTracker } from './pharmacyTracker.js';
+import { pharmacySearchService } from './pharmacySearch.js';
 
 const orchestratorLogger = logger.child({ service: 'call-orchestrator' });
 
@@ -18,6 +19,7 @@ const SEARCH_STATE_TTL = 60 * 60 * 4; // 4 hours
 
 export interface PharmacyToCall {
   id: string;
+  placeId?: string; // Google Places ID (for reserves that need DB records created)
   name: string;
   phoneNumber: string;
   address?: string;
@@ -45,7 +47,7 @@ export interface CallProgress {
   isHumanReady: boolean;
 }
 
-const MAX_PARALLEL_CALLS = 3;
+const MAX_PARALLEL_CALLS = 1;
 
 export const callOrchestrator = {
   /**
@@ -74,7 +76,7 @@ export const callOrchestrator = {
       userId,
       status: 'calling',
       medicationQuery,
-      pharmacies: pharmaciesToCall,
+      pharmacies, // Store all pharmacies so we can call them sequentially
       callIds: [],
       startedAt: Date.now(),
       completedAt: null,
@@ -364,6 +366,241 @@ export const callOrchestrator = {
       orchestratorLogger.info({ searchId }, 'Search result persisted to database');
     } catch (error) {
       orchestratorLogger.error({ err: error, searchId }, 'Failed to persist search result');
+    }
+  },
+  /**
+   * Starts calling the next pending pharmacy in the search
+   */
+  async startNextCall(searchId: string): Promise<boolean> {
+    const searchState = await this.getSearchState(searchId);
+    if (!searchState || searchState.status === 'completed' || searchState.status === 'cancelled') {
+      return false;
+    }
+
+    // Get tracker state to find pending pharmacies
+    const trackerState = await pharmacyTracker.getState(searchId);
+    if (!trackerState) {
+      return false;
+    }
+
+    // First, check if there are pending pharmacies already in the tracker
+    let pendingPharmacy = trackerState.pharmacies.find(
+      (p) => !p.callId && p.callStatus === 'PENDING'
+    );
+
+    let pharmacyToCall: PharmacyToCall | undefined;
+
+    if (pendingPharmacy) {
+      // Found a pending pharmacy in tracker
+      pharmacyToCall = searchState.pharmacies.find((p) => p.id === pendingPharmacy!.pharmacyId);
+    } else {
+      // No pending pharmacies in tracker - add one from reserves
+      const trackedIds = new Set(trackerState.pharmacies.map((p) => p.pharmacyId));
+      const reservePharmacy = searchState.pharmacies.find((p) => !trackedIds.has(p.id));
+
+      if (reservePharmacy) {
+        orchestratorLogger.info({
+          searchId,
+          pharmacyName: reservePharmacy.name,
+        }, 'Adding reserve pharmacy to search');
+
+        // Add to database first to get the Prisma-generated ID
+        const dbRecord = await prisma.pharmacyResult.create({
+          data: {
+            searchId,
+            pharmacyName: reservePharmacy.name,
+            address: reservePharmacy.address || '',
+            phone: reservePharmacy.phoneNumber,
+            latitude: 0,
+            longitude: 0,
+            placeId: reservePharmacy.placeId,
+          },
+        });
+
+        // Add to tracker with the Prisma ID
+        await pharmacyTracker.addPharmacy(searchId, {
+          id: dbRecord.id,
+          pharmacyName: reservePharmacy.name,
+          address: reservePharmacy.address || '',
+          phone: reservePharmacy.phoneNumber,
+        });
+
+        // Update pharmacyToCall to use the Prisma ID
+        pharmacyToCall = {
+          ...reservePharmacy,
+          id: dbRecord.id,
+        };
+      } else {
+        // No reserves left - check if we should fetch more from pagination
+        await this.checkAndFetchMorePharmacies(searchId, searchState, trackerState);
+
+        // Try again to find a pharmacy after fetching
+        const updatedSearchState = await this.getSearchState(searchId);
+        if (updatedSearchState) {
+          const updatedTrackedIds = new Set(trackerState.pharmacies.map((p) => p.pharmacyId));
+          const newReserve = updatedSearchState.pharmacies.find((p) => !updatedTrackedIds.has(p.id));
+          if (newReserve) {
+            const dbRecord = await prisma.pharmacyResult.create({
+              data: {
+                searchId,
+                pharmacyName: newReserve.name,
+                address: newReserve.address || '',
+                phone: newReserve.phoneNumber,
+                latitude: 0,
+                longitude: 0,
+                placeId: newReserve.placeId,
+              },
+            });
+            await pharmacyTracker.addPharmacy(searchId, {
+              id: dbRecord.id,
+              pharmacyName: newReserve.name,
+              address: newReserve.address || '',
+              phone: newReserve.phoneNumber,
+            });
+            pharmacyToCall = { ...newReserve, id: dbRecord.id };
+          }
+        }
+      }
+    }
+
+    if (!pharmacyToCall) {
+      orchestratorLogger.info({ searchId }, 'No more pharmacies available to call');
+      return false;
+    }
+
+    orchestratorLogger.info({
+      searchId,
+      pharmacyName: pharmacyToCall.name,
+    }, 'Starting next pharmacy call');
+
+    // Initiate the call
+    const result = await this.initiatePharmacyCall(searchId, pharmacyToCall, searchState.medicationQuery);
+
+    if (result) {
+      searchState.callIds.push(result.callId);
+      await redisHelpers.setJson(`${SEARCH_STATE_PREFIX}${searchId}`, searchState, SEARCH_STATE_TTL);
+    }
+
+    return !!result;
+  },
+
+  /**
+   * Checks if we need more pharmacies and fetches them via pagination
+   */
+  async checkAndFetchMorePharmacies(
+    searchId: string,
+    searchState: SearchState,
+    trackerState: { pharmacies: Array<{ pharmacyId: string; callStatus: string }> }
+  ): Promise<void> {
+    // Count remaining reserves (pharmacies in searchState but not in tracker)
+    const trackedIds = new Set(trackerState.pharmacies.map((p) => p.pharmacyId));
+    const remainingReserves = searchState.pharmacies.filter((p) => !trackedIds.has(p.id));
+
+    // First, add any existing reserves to the tracker (show in UI)
+    // This handles the initial batch of extras from the first API call
+    for (const reserve of remainingReserves) {
+      // Create DB record if needed (check if it has a placeId - reserves use Google Places ID)
+      if (reserve.placeId) {
+        const dbRecord = await prisma.pharmacyResult.create({
+          data: {
+            searchId,
+            pharmacyName: reserve.name,
+            address: reserve.address || '',
+            phone: reserve.phoneNumber,
+            latitude: 0,
+            longitude: 0,
+            placeId: reserve.placeId,
+          },
+        });
+
+        // Add to tracker (shows in UI)
+        await pharmacyTracker.addPharmacy(searchId, {
+          id: dbRecord.id,
+          pharmacyName: reserve.name,
+          address: reserve.address || '',
+          phone: reserve.phoneNumber,
+        });
+
+        // Update searchState with the Prisma ID
+        reserve.id = dbRecord.id;
+      }
+    }
+
+    // Save updated searchState with Prisma IDs
+    if (remainingReserves.length > 0) {
+      await redisHelpers.setJson(`${SEARCH_STATE_PREFIX}${searchId}`, searchState, SEARCH_STATE_TTL);
+      orchestratorLogger.info({
+        searchId,
+        addedToUI: remainingReserves.length,
+      }, 'Added remaining reserves to UI');
+    }
+
+    // If we still have less than 3 reserves after showing existing ones, try to fetch more
+    if (remainingReserves.length < 3) {
+      orchestratorLogger.info({
+        searchId,
+        remainingReservesCount: remainingReserves.length,
+      }, 'Reserves running low, attempting to fetch more pharmacies');
+
+      // Check if pagination is available
+      const hasMore = await pharmacySearchService.hasMorePages(searchId);
+      if (!hasMore) {
+        orchestratorLogger.info({ searchId }, 'No more pages available from Google Places API');
+        return;
+      }
+
+      // Fetch next page
+      const nextPage = await pharmacySearchService.fetchNextPage(searchId);
+      if (!nextPage || nextPage.pharmacies.length === 0) {
+        orchestratorLogger.info({ searchId }, 'No additional pharmacies found in next page');
+        return;
+      }
+
+      // Create DB records and add to tracker so they show in UI immediately
+      const newPharmacies: PharmacyToCall[] = [];
+      for (const p of nextPage.pharmacies) {
+        // Create DB record (all pharmacies, including those without phones)
+        const dbRecord = await prisma.pharmacyResult.create({
+          data: {
+            searchId,
+            pharmacyName: p.name,
+            address: p.address,
+            phone: p.phone, // Can be null for phoneless pharmacies
+            latitude: p.latitude,
+            longitude: p.longitude,
+            placeId: p.id,
+            chain: p.chain,
+          },
+        });
+
+        // Add to tracker (shows in UI - all pharmacies)
+        await pharmacyTracker.addPharmacy(searchId, {
+          id: dbRecord.id,
+          pharmacyName: p.name,
+          address: p.address,
+          phone: p.phone ?? undefined,
+        });
+
+        // Only add pharmacies WITH phone numbers to search state for calling
+        if (p.phone) {
+          newPharmacies.push({
+            id: dbRecord.id,
+            placeId: p.id,
+            name: p.name,
+            phoneNumber: p.phone,
+            address: p.address,
+          });
+        }
+      }
+
+      searchState.pharmacies.push(...newPharmacies);
+      await redisHelpers.setJson(`${SEARCH_STATE_PREFIX}${searchId}`, searchState, SEARCH_STATE_TTL);
+
+      orchestratorLogger.info({
+        searchId,
+        newPharmaciesCount: newPharmacies.length,
+        totalPharmacies: searchState.pharmacies.length,
+      }, 'Added new pharmacies from pagination (visible in UI)');
     }
   },
 };

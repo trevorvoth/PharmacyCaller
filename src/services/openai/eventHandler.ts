@@ -152,6 +152,7 @@ class OpenAIEventHandler extends EventEmitter {
 
       // Send notification to patient
       await notificationService.sendPharmacistReady(event.searchId, {
+        searchId: event.searchId,
         callId: event.callId,
         pharmacyId: callData.pharmacyId,
         pharmacyName: callData.pharmacyName,
@@ -205,6 +206,7 @@ class OpenAIEventHandler extends EventEmitter {
 
       // Send notification to patient - they can leave a message
       await notificationService.sendVoicemailReady(event.searchId, {
+        searchId: event.searchId,
         callId: event.callId,
         pharmacyId: callData.pharmacyId,
         pharmacyName: callData.pharmacyName,
