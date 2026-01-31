@@ -9,6 +9,9 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   WEBHOOK_BASE_URL: z.string().url().optional(),
 
+  // Demo mode - simulates calls without Twilio
+  DEMO_MODE: z.string().default('false').transform((val) => val === 'true'),
+
   // Database
   DATABASE_URL: z.string().url(),
 
@@ -29,8 +32,11 @@ const envSchema = z.object({
   // OpenAI
   OPENAI_API_KEY: z.string().startsWith('sk-'),
 
-  // Google Places
-  GOOGLE_PLACES_API_KEY: z.string(),
+  // OpenStreetMap (Overpass API)
+  OVERPASS_API_URL: z.string().url().optional(), // Defaults to public API
+
+  // Google Places (deprecated - kept for backwards compatibility)
+  GOOGLE_PLACES_API_KEY: z.string().optional(),
 
   // Sentry
   SENTRY_DSN: z.string().url().optional(),

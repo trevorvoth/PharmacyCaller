@@ -72,7 +72,8 @@ model PharmacyResult {
   phoneSource   PhoneSource?        // Where the phone number came from
   latitude      Float
   longitude     Float
-  placeId       String?             // Google Places ID
+  placeId       String?             // Google Places ID (deprecated, kept for old data)
+  osmId         String?             // OSM ID (format: "osm:node:123456")
   chain         PharmacyChain?
   callStatus    PharmacyCallStatus  @default(PENDING)
   hasMedication Boolean?
@@ -84,6 +85,7 @@ model PharmacyResult {
 
   @@index([searchId])
   @@index([callStatus])
+  @@index([osmId])
 }
 
 enum CallStatus {
@@ -131,6 +133,7 @@ enum PharmacyChain {
 }
 
 enum PhoneSource {
-  GOOGLE
-  NPPES
+  GOOGLE  // Deprecated - kept for backwards compatibility
+  OSM     // OpenStreetMap
+  NPPES   // National Provider Registry
 }
