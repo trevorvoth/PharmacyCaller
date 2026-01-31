@@ -40,6 +40,21 @@ describe('OpenStreetMap Service', () => {
       const query = osmService._buildQuery(40.7128, -74.006, 5000);
       expect(query).toContain('[timeout:25]');
     });
+
+    it('should include shop=chemist tag for UK/Europe coverage', () => {
+      const query = osmService._buildQuery(40.7128, -74.006, 8047);
+      expect(query).toContain('["shop"="chemist"]');
+    });
+
+    it('should include shop=pharmacy tag for alternative tagging', () => {
+      const query = osmService._buildQuery(40.7128, -74.006, 8047);
+      expect(query).toContain('["shop"="pharmacy"]');
+    });
+
+    it('should include healthcare=pharmacy tag', () => {
+      const query = osmService._buildQuery(40.7128, -74.006, 8047);
+      expect(query).toContain('["healthcare"="pharmacy"]');
+    });
   });
 
   describe('_parseElement', () => {
@@ -115,6 +130,72 @@ describe('OpenStreetMap Service', () => {
 
       const result = osmService._parseElement(element, 40.0, -74.0);
       expect(result).toBeNull();
+    });
+
+    it('should use brand as name fallback', () => {
+      const element = {
+        type: 'node' as const,
+        id: 11111112,
+        lat: 40.0,
+        lon: -74.0,
+        tags: {
+          brand: 'CVS Pharmacy',
+          'addr:street': 'Main Street',
+        },
+      };
+
+      const result = osmService._parseElement(element, 40.0, -74.0);
+      expect(result).not.toBeNull();
+      expect(result?.name).toBe('CVS Pharmacy');
+    });
+
+    it('should use operator as name fallback', () => {
+      const element = {
+        type: 'node' as const,
+        id: 11111113,
+        lat: 40.0,
+        lon: -74.0,
+        tags: {
+          operator: 'Walgreens Co.',
+          'addr:street': 'Oak Avenue',
+        },
+      };
+
+      const result = osmService._parseElement(element, 40.0, -74.0);
+      expect(result).not.toBeNull();
+      expect(result?.name).toBe('Walgreens Co.');
+    });
+
+    it('should use official_name as name fallback', () => {
+      const element = {
+        type: 'node' as const,
+        id: 11111114,
+        lat: 40.0,
+        lon: -74.0,
+        tags: {
+          'official_name': 'Rite Aid Corporation Store #123',
+        },
+      };
+
+      const result = osmService._parseElement(element, 40.0, -74.0);
+      expect(result).not.toBeNull();
+      expect(result?.name).toBe('Rite Aid Corporation Store #123');
+    });
+
+    it('should prefer name over brand fallback', () => {
+      const element = {
+        type: 'node' as const,
+        id: 11111115,
+        lat: 40.0,
+        lon: -74.0,
+        tags: {
+          name: 'CVS Pharmacy #1234',
+          brand: 'CVS Pharmacy',
+        },
+      };
+
+      const result = osmService._parseElement(element, 40.0, -74.0);
+      expect(result?.name).toBe('CVS Pharmacy #1234');
     });
 
     it('should return null for way without center', () => {

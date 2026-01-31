@@ -67,6 +67,11 @@ interface OverpassResponse {
 
 /**
  * Build Overpass QL query for pharmacies within a radius
+ * Queries multiple OSM tags to maximize coverage:
+ * - amenity=pharmacy (standard)
+ * - shop=chemist (common in UK/Europe)
+ * - shop=pharmacy (alternative tagging)
+ * - healthcare=pharmacy (healthcare classification)
  */
 function buildOverpassQuery(
   latitude: number,
@@ -75,11 +80,18 @@ function buildOverpassQuery(
 ): string {
   // Query for nodes and ways tagged as pharmacies within the radius
   // Using 'around' filter for geographic search
+  // Include multiple pharmacy-related tags for comprehensive coverage
   return `
 [out:json][timeout:${OVERPASS_TIMEOUT}];
 (
   node["amenity"="pharmacy"](around:${radiusMeters},${latitude},${longitude});
   way["amenity"="pharmacy"](around:${radiusMeters},${latitude},${longitude});
+  node["shop"="chemist"](around:${radiusMeters},${latitude},${longitude});
+  way["shop"="chemist"](around:${radiusMeters},${latitude},${longitude});
+  node["shop"="pharmacy"](around:${radiusMeters},${latitude},${longitude});
+  way["shop"="pharmacy"](around:${radiusMeters},${latitude},${longitude});
+  node["healthcare"="pharmacy"](around:${radiusMeters},${latitude},${longitude});
+  way["healthcare"="pharmacy"](around:${radiusMeters},${latitude},${longitude});
 );
 out body center;
   `.trim();
@@ -113,8 +125,13 @@ function parseOSMElement(
     return null;
   }
 
-  // Get name - required field
-  const name = tags.name ?? tags['name:en'] ?? null;
+  // Get name - try multiple fallbacks for better coverage
+  const name = tags.name
+    ?? tags['name:en']
+    ?? tags.brand
+    ?? tags.operator
+    ?? tags['official_name']
+    ?? null;
   if (!name) {
     logger.debug({ osmId: element.id, type: element.type }, 'Skipping pharmacy without name');
     return null;
