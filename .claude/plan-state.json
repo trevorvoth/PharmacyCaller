@@ -1,20 +1,33 @@
 {
-  "session_id": "plan-2026-01-18-1201",
-  "started_at": "2026-01-18T12:01:00Z",
-  "project_hash": "initial",
+  "session_id": "plan-2026-01-26-2220",
+  "started_at": "2026-01-27T03:20:00Z",
+  "project_hash": "pharmacy-caller",
   "phase": "complete",
   "research_complete": true,
   "human_decisions": [
     {
-      "phase": "init",
-      "decision": "System architecture planning",
-      "timestamp": "2026-01-18T12:01:00Z"
+      "phase": "brain-jam",
+      "decision": "Bug fix for pharmacy search",
+      "requirements": {
+        "problem": "When filtering pharmacies by chain, not enough pharmacies show in the UI",
+        "success": [
+          "All pharmacies matching the chain filter should appear",
+          "More results than currently shown",
+          "Only pharmacies from selected chains appear",
+          "Pagination works when filtering"
+        ],
+        "constraints": "None specified",
+        "out_of_scope": "Nothing specific - all related changes acceptable"
+      },
+      "timestamp": "2026-01-27T03:22:00Z"
     },
     {
-      "phase": "brain-jam",
-      "decision": "Requirements confirmed: AI-powered pharmacy calling with patient handoff, web-first, low-cost MVP",
-      "timestamp": "2026-01-18T12:05:00Z"
+      "phase": "approaches",
+      "decision": "Approach A - Increase pagination limits when filtering",
+      "description": "Increase maxPages (10→30) and radius (5mi→15mi) when chain filters are active",
+      "timestamp": "2026-01-27T03:28:00Z"
     }
   ],
-  "abandoned": false
+  "abandoned": false,
+  "completed_at": "2026-01-27T03:32:00Z"
 }

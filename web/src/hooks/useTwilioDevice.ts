@@ -17,6 +17,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
   const [deviceState, setDeviceState] = useState<DeviceState>('initializing');
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
@@ -28,7 +29,16 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
     const initDevice = async () => {
       try {
         const res = await tokenApi.getToken();
-        const token = res.data.token;
+        const { token, demoMode } = res.data;
+
+        // In demo mode, skip real device initialization
+        if (demoMode) {
+          if (mounted) {
+            setIsDemoMode(true);
+            setDeviceState('ready');
+          }
+          return;
+        }
 
         const device = new Device(token, {
           codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU],
@@ -64,7 +74,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
       }
     };
 
-    initDevice();
+    void initDevice();
 
     return () => {
       mounted = false;
@@ -75,7 +85,18 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
     };
   }, []);
 
-  const connect = useCallback(async (conferenceName: string) => {
+  const connect = useCallback(async (_conferenceName: string) => {
+    // Demo mode: simulate connection
+    if (isDemoMode) {
+      setDeviceState('connecting');
+      setError(null);
+      // Simulate brief connection delay
+      setTimeout(() => {
+        setDeviceState('connected');
+      }, 500);
+      return;
+    }
+
     if (!deviceRef.current) {
       setError('Device not ready');
       return;
@@ -87,7 +108,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
 
       const call = await deviceRef.current.connect({
         params: {
-          To: conferenceName,
+          To: _conferenceName,
         },
       });
 
@@ -110,7 +131,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
       setError(err instanceof Error ? err.message : 'Failed to connect');
       setDeviceState('error');
     }
-  }, []);
+  }, [isDemoMode]);
 
   const disconnect = useCallback(() => {
     if (callRef.current) {
@@ -122,12 +143,17 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
   }, []);
 
   const toggleMute = useCallback(() => {
+    if (isDemoMode) {
+      // In demo mode, just toggle the state
+      setIsMuted((prev) => !prev);
+      return;
+    }
     if (callRef.current) {
       const newMuted = !isMuted;
       callRef.current.mute(newMuted);
       setIsMuted(newMuted);
     }
-  }, [isMuted]);
+  }, [isMuted, isDemoMode]);
 
   return {
     deviceState,

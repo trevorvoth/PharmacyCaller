@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { generateAccessToken } from '../services/twilio/client.js';
+import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
 const tokenLogger = logger.child({ service: 'token-routes' });
@@ -40,6 +41,7 @@ export async function tokenRoutes(app: FastifyInstance): Promise<void> {
           identity,
           // Token is valid for 1 hour by default
           expiresIn: 3600,
+          demoMode: env.DEMO_MODE,
         });
       } catch (error) {
         tokenLogger.error({

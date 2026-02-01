@@ -269,6 +269,8 @@ export default function SearchPage() {
     pharmacyId: p.pharmacyId,
     pharmacyName: p.pharmacyName,
     address: p.address,
+    phone: p.phone,
+    phoneSource: p.phoneSource,
     status: p.hasMedication === false ? 'completed' : mapSearchStatusToPharmacyStatus(p.status, p.isHumanReady, p.isVoicemailReady),
     hasMedication: p.hasMedication,
     callId: p.callId ?? p.pharmacyId,

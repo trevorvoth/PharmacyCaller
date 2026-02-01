@@ -1,0 +1,29 @@
+{
+  "session_id": "ship-2026-01-19-1245",
+  "verify_session_id": "verify-2026-01-19-1200",
+  "verified_commit": "4099da6e5cb0274209dd3ccad44ceab234de16e9",
+  "target": "main",
+  "started_at": "2026-01-19T12:45:00Z",
+  "status": "initialising",
+  "phases": {
+    "pre_ship_review": { "status": "pending" },
+    "commit_strategy": { "status": "pending", "strategy": null },
+    "documentation": { "status": "pending" },
+    "pr_creation": { "status": "pending", "pr_number": null },
+    "merge": { "status": "pending", "sha": null }
+  },
+  "unlock_merge": false,
+  "cleanup": {
+    "branches_deleted": []
+  },
+  "uncommitted_changes": {
+    "note": "Lint fixes made during verification",
+    "files": [
+      "src/middleware/rateLimit.ts",
+      "src/middleware/userLimits.ts",
+      "src/routes/webhooks/twilio.ts",
+      "src/services/patientTimeout.ts",
+      "src/websocket/server.ts"
+    ]
+  }
+}

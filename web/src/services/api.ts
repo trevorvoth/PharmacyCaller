@@ -78,6 +78,8 @@ export interface SearchStatus {
     pharmacyId: string;
     pharmacyName: string;
     address: string;
+    phone: string;
+    phoneSource: 'google' | 'nppes' | null;
     status: 'pending' | 'calling' | 'on_hold' | 'ready' | 'connected' | 'completed' | 'failed' | 'voicemail';
     hasMedication: boolean | null;
     isHumanReady: boolean;

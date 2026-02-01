@@ -86,7 +86,7 @@ export default function CallPage() {
         if (!prev) return prev;
 
         const pharmacies = prev.pharmacies.map((p) => {
-          if (p.pharmacyId === data.callId) {
+          if (p.callId === data.callId) {
             return {
               ...p,
               status: mapCallStateToStatus(data.newState),
@@ -188,8 +188,11 @@ export default function CallPage() {
     pharmacyId: p.pharmacyId,
     pharmacyName: p.pharmacyName,
     address: p.address,
+    phone: p.phone,
+    phoneSource: p.phoneSource,
     status: mapSearchStatusToPharmacyStatus(p.status, p.isHumanReady, p.isVoicemailReady),
     hasMedication: p.hasMedication,
+    callId: p.callId ?? p.pharmacyId,
   })) || [];
 
   // Active call or connecting

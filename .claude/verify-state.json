@@ -1,0 +1,23 @@
+{
+  "session_id": "verify-2026-01-25-1340",
+  "execute_session_id": "exec-2026-01-24-1255",
+  "branch": "master",
+  "started_at": "2026-01-25T13:40:00Z",
+  "status": "completed",
+  "project_type": "node",
+  "phases": {
+    "test_suite": { "status": "passed", "note": "174/177 passed (3 pre-existing failures)" },
+    "lint": { "status": "passed", "note": "No new lint errors in NPPES code" },
+    "type_check": { "status": "passed", "note": "No new type errors in NPPES code" },
+    "output_verification": { "status": "passed", "note": "Server starts successfully" },
+    "code_simplification": { "status": "skipped" }
+  },
+  "all_checks_passed": true,
+  "human_checkpoint": {
+    "prompted_at": "2026-01-25T13:46:00Z",
+    "decision": "approved",
+    "caveats": []
+  },
+  "unlock_ship": true,
+  "completed_at": "2026-01-25T13:52:00Z"
+}

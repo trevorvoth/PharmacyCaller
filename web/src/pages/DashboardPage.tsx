@@ -4,6 +4,8 @@ import { searchApi, type StartSearchRequest } from '../services/api';
 import Button from '../components/Button';
 import Input from '../components/Input';
 import Card, { CardContent } from '../components/Card';
+import ChainFilter from '../components/ChainFilter';
+import OpenNowFilter from '../components/OpenNowFilter';
 
 interface SearchHistoryItem {
   id: string;
@@ -23,6 +25,9 @@ export default function DashboardPage() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationError, setLocationError] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedChains, setSelectedChains] = useState<string[]>([]);
+  const [openNow, setOpenNow] = useState(false);
 
   useEffect(() => {
     if ('geolocation' in navigator) {
@@ -75,6 +80,8 @@ export default function DashboardPage() {
         medicationQuery: medicationQuery.trim(),
         latitude: location.latitude,
         longitude: location.longitude,
+        chainFilter: selectedChains.length > 0 ? selectedChains : undefined,
+        openNow: openNow || undefined,
       };
 
       const res = await searchApi.start(data);
@@ -118,6 +125,39 @@ export default function DashboardPage() {
               placeholder="e.g., Adderall 20mg, Ozempic, Metformin"
               required
             />
+
+            {/* Filter Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center space-x-2 text-sm text-primary-500 hover:text-primary-600"
+            >
+              <svg
+                className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+              <span>{showFilters ? 'Hide filters' : 'Show filters'}</span>
+              {(selectedChains.length > 0 || openNow) && (
+                <span className="ml-2 px-1.5 py-0.5 text-xs bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400 rounded">
+                  {selectedChains.length + (openNow ? 1 : 0)} active
+                </span>
+              )}
+            </button>
+
+            {/* Filters Panel */}
+            {showFilters && (
+              <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <OpenNowFilter isEnabled={openNow} onChange={setOpenNow} />
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <ChainFilter selectedChains={selectedChains} onChange={setSelectedChains} />
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
               {location ? (
                 <>

@@ -1,9 +1,11 @@
-import PharmacyCard, { type PharmacyStatus } from './PharmacyCard';
+import PharmacyCard, { type PharmacyStatus, type PhoneSource } from './PharmacyCard';
 
 export interface PharmacyItem {
   pharmacyId: string;
   pharmacyName: string;
   address: string;
+  phone?: string;
+  phoneSource?: PhoneSource;
   status: PharmacyStatus;
   hasMedication: boolean | null;
   callId?: string;
@@ -37,7 +39,7 @@ export default function PharmacyList({
     );
   }
 
-  // Sort: ready first, then calling, then others
+  // Sort: ready first, then calling, then others - and by distance within each group
   const sortedPharmacies = [...pharmacies].sort((a, b) => {
     const priority: Record<PharmacyStatus, number> = {
       ready: 0,
@@ -49,7 +51,12 @@ export default function PharmacyList({
       completed: 6,
       failed: 7,
     };
-    return priority[a.status] - priority[b.status];
+    const statusDiff = priority[a.status] - priority[b.status];
+    if (statusDiff !== 0) {
+      return statusDiff;
+    }
+    // Within same status, sort by distance (closest first)
+    return (a.distance ?? Infinity) - (b.distance ?? Infinity);
   });
 
   return (
@@ -68,6 +75,8 @@ export default function PharmacyList({
           <PharmacyCard
             pharmacyName={pharmacy.pharmacyName}
             address={pharmacy.address}
+            phone={pharmacy.phone}
+            phoneSource={pharmacy.phoneSource}
             status={pharmacy.status}
             hasMedication={pharmacy.hasMedication}
             isHighlighted={pharmacy.pharmacyId === highlightedPharmacyId}

@@ -63,7 +63,7 @@ export async function pharmacyRoutes(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      const results = await pharmacySearchService.searchNearby({
+      const searchResponse = await pharmacySearchService.searchNearby({
         latitude,
         longitude,
         radiusMeters: radius,
@@ -75,10 +75,11 @@ export async function pharmacyRoutes(app: FastifyInstance): Promise<void> {
       await metrics.increment(METRICS.SEARCHES_STARTED);
 
       return reply.status(200).send({
-        results,
-        count: results.length,
+        results: searchResponse.pharmacies,
+        count: searchResponse.pharmacies.length,
         location: { latitude, longitude },
         radiusMeters: radius ?? 16093,
+        hasNextPage: searchResponse.hasNextPage,
       });
     } catch (error) {
       if (error instanceof Error && error.message.includes('API key')) {

@@ -6,7 +6,13 @@
       "Bash(npm run test:run:*)",
       "Bash(npm test:*)",
       "Bash(docker compose:*)",
-      "Bash(tasklist /FI \"IMAGENAME eq Docker Desktop.exe\")"
+      "Bash(tasklist /FI \"IMAGENAME eq Docker Desktop.exe\")",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(npm run lint)",
+      "Bash(npm run db:generate:*)",
+      "WebSearch",
+      "Bash(curl:*)"
     ]
   }
 }

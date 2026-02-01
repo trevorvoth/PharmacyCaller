@@ -10,9 +10,13 @@ export type PharmacyStatus =
   | 'failed'
   | 'voicemail';
 
+export type PhoneSource = 'google' | 'nppes' | null;
+
 interface PharmacyCardProps {
   pharmacyName: string;
   address: string;
+  phone?: string;
+  phoneSource?: PhoneSource;
   status: PharmacyStatus;
   hasMedication?: boolean | null;
   isHighlighted?: boolean;
@@ -28,6 +32,12 @@ function formatDistance(meters: number): string {
     return `${Math.round(meters)} m`;
   }
   return `${miles.toFixed(1)} mi`;
+}
+
+function formatPhoneSource(source: PhoneSource): string {
+  if (source === 'google') return 'Google';
+  if (source === 'nppes') return 'Federal Database';
+  return '';
 }
 
 const statusConfig: Record<PharmacyStatus, { label: string; color: string; bgColor: string }> = {
@@ -76,6 +86,8 @@ const statusConfig: Record<PharmacyStatus, { label: string; color: string; bgCol
 export default function PharmacyCard({
   pharmacyName,
   address,
+  phone,
+  phoneSource,
   status,
   hasMedication,
   isHighlighted,
@@ -119,6 +131,20 @@ export default function PharmacyCard({
               <span className="flex-shrink-0 text-xs font-medium text-gray-400 dark:text-gray-500">
                 {formatDistance(distance)}
               </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {phone ? (
+              <>
+                <span>{phone}</span>
+                {phoneSource && (
+                  <span className="text-xs text-gray-400 dark:text-gray-500">
+                    ({formatPhoneSource(phoneSource)})
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-gray-400 dark:text-gray-500 italic">Phone Number N/A</span>
             )}
           </div>
         </div>

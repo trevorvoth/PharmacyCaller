@@ -1,10 +1,13 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { redis } from '../services/redis.js';
 import { logger } from '../utils/logger.js';
+import { env } from '../config/env.js';
 
 const RATE_LIMIT_PREFIX = 'ratelimit:';
 const DEFAULT_WINDOW_SECONDS = 60; // 1 minute
-const DEFAULT_MAX_REQUESTS = 10; // 10 requests per minute
+// Higher limits in development for easier testing
+const IS_DEV = env.NODE_ENV === 'development';
+const DEFAULT_MAX_REQUESTS = IS_DEV ? 100 : 10; // 100 in dev, 10 in prod
 
 interface RateLimitConfig {
   windowSeconds?: number;
@@ -81,9 +84,9 @@ export function createRateLimiter(config: RateLimitConfig = {}) {
 // Default rate limiter (10 requests per minute per IP)
 export const defaultRateLimit = createRateLimiter();
 
-// Stricter rate limiter for auth endpoints (5 requests per minute)
+// Stricter rate limiter for auth endpoints (50 in dev, 5 in prod)
 export const authRateLimit = createRateLimiter({
-  maxRequests: 5,
+  maxRequests: IS_DEV ? 50 : 5,
   keyPrefix: 'auth:',
 });
 

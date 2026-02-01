@@ -1,8 +1,10 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { userService } from '../services/userService.js';
 import { logger } from '../utils/logger.js';
+import { env } from '../config/env.js';
 
-const DAILY_SEARCH_LIMIT = 10;
+// Much higher limit in development for testing
+const DAILY_SEARCH_LIMIT = env.NODE_ENV === 'development' ? 1000 : 10;
 
 export async function checkSearchLimit(
   request: FastifyRequest,
