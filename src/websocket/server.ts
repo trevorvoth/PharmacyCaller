@@ -4,6 +4,7 @@ import { logger } from '../utils/logger.js';
 import { env } from '../config/env.js';
 import { authenticateWebSocket } from './auth.js';
 import type { JwtPayload } from '../utils/jwt.js';
+import { redis } from '../services/redis.js';
 
 const wsLogger = logger.child({ service: 'websocket-server' });
 
@@ -21,6 +22,7 @@ export enum NotificationEvent {
   PHARMACIST_READY = 'pharmacist_ready',
   VOICEMAIL_READY = 'voicemail_ready',
   CALL_STATUS_UPDATE = 'call_status_update',
+  CALL_CONNECT = 'call_connect',
   IVR_FAILED = 'ivr_failed',
   SEARCH_UPDATE = 'search_update',
   CONNECTION_STATUS = 'connection_status',
@@ -51,13 +53,15 @@ export function initWebSocketServer(httpServer: HTTPServer): SocketIOServer {
     cors: {
       origin: env.NODE_ENV === 'production'
         ? ['https://pharmacycaller.com']
-        : '*',
+        : ['http://localhost:5173', 'http://localhost:5177', 'http://127.0.0.1:5173'],
       credentials: true,
+      methods: ['GET', 'POST'],
     },
     path: '/socket.io',
-    transports: ['websocket', 'polling'],
+    transports: ['polling', 'websocket'],
     pingInterval: 25000,
     pingTimeout: 20000,
+    allowEIO3: true,
   });
 
   // Authentication middleware
@@ -129,6 +133,22 @@ function handleConnection(socket: Socket): void {
     }, 'Client subscribed to search');
 
     socket.emit('subscribed', { searchId });
+
+    // Check for active call and send it to the late-joining client
+    const activeCallKey = `active_call:${searchId}`;
+    redis.get(activeCallKey).then((data) => {
+      if (data) {
+        const activeCall = JSON.parse(data);
+        wsLogger.debug({
+          socketId: socket.id,
+          searchId,
+          callId: activeCall.callId,
+        }, 'Sending active call to late-joining client');
+        socket.emit(NotificationEvent.CALL_CONNECT, activeCall);
+      }
+    }).catch((err) => {
+      wsLogger.error({ err, searchId }, 'Failed to check for active call');
+    });
   });
 
   // Handle search room unsubscription

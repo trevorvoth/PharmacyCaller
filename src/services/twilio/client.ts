@@ -1,5 +1,6 @@
 import Twilio from 'twilio';
 import { twilioConfig } from '../../config/twilio.js';
+import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 
 const twilioLogger = logger.child({ service: 'twilio' });
@@ -39,7 +40,7 @@ export function generateAccessToken(identity: string): string {
   );
 
   const voiceGrant = new VoiceGrant({
-    outgoingApplicationSid: undefined, // We'll add TwiML app later
+    outgoingApplicationSid: env.TWILIO_TWIML_APP_SID,
     incomingAllow: true,
   });
 

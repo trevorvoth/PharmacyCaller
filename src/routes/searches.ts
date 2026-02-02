@@ -4,6 +4,7 @@ import { prisma } from '../db/client.js';
 import { logger } from '../utils/logger.js';
 import { callOrchestrator } from '../services/callOrchestrator.js';
 import { pharmacyTracker } from '../services/pharmacyTracker.js';
+import { notificationService } from '../services/notifications.js';
 import { pharmacySearchService, type PharmacySearchResult } from '../services/pharmacySearch.js';
 import { checkSearchLimit } from '../middleware/userLimits.js';
 import { metrics, METRICS } from '../services/metrics.js';
@@ -400,6 +401,12 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
       }
 
       await pharmacyTracker.markMedicationNotFound(pharmacy.searchId, id);
+
+      // Clear active call and start next pharmacy call
+      await notificationService.clearActiveCall(pharmacy.searchId);
+      void callOrchestrator.startNextCall(pharmacy.searchId).catch((err) => {
+        searchLogger.error({ err, searchId: pharmacy.searchId }, 'Failed to start next call');
+      });
 
       return reply.send({
         success: true,

@@ -25,11 +25,20 @@ interface CallStateChange {
   pharmacyName: string;
 }
 
+interface CallConnect {
+  searchId: string;
+  callId: string;
+  pharmacyId: string;
+  pharmacyName: string;
+  conferenceName: string;
+}
+
 interface WebSocketContextType {
   isConnected: boolean;
   onSearchUpdate: (callback: (data: SearchUpdate) => void) => () => void;
   onPharmacistReady: (callback: (data: PharmacistReady) => void) => () => void;
   onCallStateChange: (callback: (data: CallStateChange) => void) => () => void;
+  onCallConnect: (callback: (data: CallConnect) => void) => () => void;
   joinSearch: (searchId: string) => void;
   leaveSearch: (searchId: string) => void;
 }
@@ -52,13 +61,15 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     }
 
     const token = localStorage.getItem('token');
-    const newSocket = io({
+    // Connect directly to backend to bypass Vite proxy issues
+    const newSocket = io('http://localhost:3000', {
       auth: { token },
       transports: ['polling', 'websocket'],
       path: '/socket.io',
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      withCredentials: true,
     });
 
     newSocket.on('connect', () => {
@@ -120,6 +131,22 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     [socket]
   );
 
+  const onCallConnect = useCallback(
+    (callback: (data: CallConnect) => void) => {
+      if (!socket) {
+        console.log('[WebSocket] onCallConnect called but socket is null');
+        return () => {};
+      }
+      console.log('[WebSocket] Registering call_connect listener');
+      socket.on('call_connect', callback);
+      return () => {
+        console.log('[WebSocket] Removing call_connect listener');
+        socket.off('call_connect', callback);
+      };
+    },
+    [socket]
+  );
+
   const joinSearch = useCallback(
     (searchId: string) => {
       if (socket) {
@@ -145,6 +172,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         onSearchUpdate,
         onPharmacistReady,
         onCallStateChange,
+        onCallConnect,
         joinSearch,
         leaveSearch,
       }}

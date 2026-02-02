@@ -50,6 +50,15 @@ export interface IVRFailedPayload {
   timestamp?: string;
 }
 
+export interface CallConnectPayload {
+  searchId: string;
+  callId: string;
+  pharmacyId: string;
+  pharmacyName: string;
+  conferenceName: string;
+  timestamp?: string;
+}
+
 export interface SearchUpdatePayload {
   searchId: string;
   status: 'active' | 'completed' | 'cancelled';
@@ -137,6 +146,50 @@ class NotificationService {
     sendToSearch(searchId, NotificationEvent.CALL_STATUS_UPDATE, notification);
 
     // Don't store status updates - they're transient
+  }
+
+  /**
+   * Send "call_connect" notification
+   *
+   * Tells the frontend to connect the user's Twilio Device to the conference
+   * Also stores in Redis so late-joining clients get it
+   */
+  async sendCallConnect(searchId: string, payload: CallConnectPayload): Promise<void> {
+    const notification = {
+      ...payload,
+      timestamp: payload.timestamp ?? new Date().toISOString(),
+    };
+
+    notificationLogger.info({
+      searchId,
+      callId: payload.callId,
+      pharmacyName: payload.pharmacyName,
+      conferenceName: payload.conferenceName,
+    }, 'Sending call_connect notification');
+
+    // Store in Redis for late-joining clients (expires in 5 minutes)
+    const key = `active_call:${searchId}`;
+    await redis.set(key, JSON.stringify(notification), 'EX', 300);
+
+    sendToSearch(searchId, NotificationEvent.CALL_CONNECT, notification);
+  }
+
+  /**
+   * Clear active call for a search (call ended)
+   */
+  async clearActiveCall(searchId: string): Promise<void> {
+    const key = `active_call:${searchId}`;
+    await redis.del(key);
+  }
+
+  /**
+   * Get active call for a search (for late-joining clients)
+   */
+  async getActiveCall(searchId: string): Promise<CallConnectPayload | null> {
+    const key = `active_call:${searchId}`;
+    const data = await redis.get(key);
+    if (!data) return null;
+    return JSON.parse(data) as CallConnectPayload;
   }
 
   /**

@@ -39,23 +39,8 @@ export default function PharmacyList({
     );
   }
 
-  // Sort: ready first, then calling, then others - and by distance within each group
+  // Sort by distance only - keep stable ordering regardless of status changes
   const sortedPharmacies = [...pharmacies].sort((a, b) => {
-    const priority: Record<PharmacyStatus, number> = {
-      ready: 0,
-      connected: 1,
-      calling: 2,
-      on_hold: 3,
-      voicemail: 4,
-      pending: 5,
-      completed: 6,
-      failed: 7,
-    };
-    const statusDiff = priority[a.status] - priority[b.status];
-    if (statusDiff !== 0) {
-      return statusDiff;
-    }
-    // Within same status, sort by distance (closest first)
     return (a.distance ?? Infinity) - (b.distance ?? Infinity);
   });
 

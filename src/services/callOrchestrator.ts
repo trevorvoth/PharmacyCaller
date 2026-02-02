@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { demoSimulator } from './demoSimulator.js';
 import { pharmacyTracker } from './pharmacyTracker.js';
 import { pharmacySearchService } from './pharmacySearch.js';
+import { notificationService } from './notifications.js';
 
 const orchestratorLogger = logger.child({ service: 'call-orchestrator' });
 
@@ -183,6 +184,15 @@ export const callOrchestrator = {
           pharmacyName: pharmacy.name,
         }, 'Demo call simulation started');
 
+        // Notify frontend to show call overlay (demo mode - no real Twilio Device connect)
+        await notificationService.sendCallConnect(searchId, {
+          searchId,
+          callId,
+          pharmacyId: pharmacy.id,
+          pharmacyName: pharmacy.name,
+          conferenceName: `call-${callId}`,
+        });
+
         return callStateMachine.getState(callId);
       }
 
@@ -209,6 +219,15 @@ export const callOrchestrator = {
         pharmacyName: pharmacy.name,
       }, 'Twilio call initiated successfully');
 
+      // Notify frontend to connect user's browser to the conference
+      await notificationService.sendCallConnect(searchId, {
+        searchId,
+        callId,
+        pharmacyId: pharmacy.id,
+        pharmacyName: pharmacy.name,
+        conferenceName: `call-${callId}`,
+      });
+
       return callStateMachine.getState(callId);
     } catch (error) {
       orchestratorLogger.error({
@@ -222,6 +241,9 @@ export const callOrchestrator = {
       await callStateMachine.transition(callId, CallState.FAILED, {
         reason: error instanceof Error ? error.message : 'Unknown error',
       });
+
+      // Notify frontend of the failure via pharmacy tracker
+      await pharmacyTracker.updateFromCallState(searchId, callId, CallState.FAILED);
 
       return null;
     }

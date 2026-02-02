@@ -1,6 +1,5 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { createServer } from 'http';
 import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { initSentry, sentryErrorHandler } from './utils/sentry.js';
@@ -120,15 +119,13 @@ const start = async (): Promise<void> => {
     await redis.ping();
     logger.info('Redis connected');
 
-    // Get the underlying HTTP server for Socket.io
-    const httpServer = createServer();
+    // Start Fastify first to get its underlying HTTP server
+    await app.listen({ port: env.PORT, host: '0.0.0.0' });
 
-    // Initialize WebSocket server
-    initWebSocketServer(httpServer);
+    // Initialize WebSocket server on Fastify's HTTP server
+    initWebSocketServer(app.server);
     logger.info('WebSocket server initialized');
 
-    // Start Fastify on the HTTP server
-    await app.listen({ port: env.PORT, host: '0.0.0.0' });
     logger.info({ port: env.PORT }, 'Server started');
   } catch (error) {
     logger.fatal({ err: error }, 'Failed to start server');

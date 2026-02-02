@@ -11,70 +11,41 @@ interface UseTwilioDeviceReturn {
   connect: (conferenceName: string) => Promise<void>;
   disconnect: () => void;
   toggleMute: () => void;
+  sendDigits: (digits: string) => void;
 }
 
 export function useTwilioDevice(): UseTwilioDeviceReturn {
-  const [deviceState, setDeviceState] = useState<DeviceState>('initializing');
+  // Start as 'ready' - we'll initialize device lazily on first connect
+  const [deviceState, setDeviceState] = useState<DeviceState>('ready');
   const [isMuted, setIsMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState<boolean | null>(null);
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
+  const tokenRef = useRef<string | null>(null);
 
-  // Initialize device
+  // Fetch token and check demo mode on mount (but don't register device yet)
   useEffect(() => {
     let mounted = true;
 
-    const initDevice = async () => {
+    const fetchToken = async () => {
       try {
         const res = await tokenApi.getToken();
         const { token, demoMode } = res.data;
 
-        // In demo mode, skip real device initialization
-        if (demoMode) {
-          if (mounted) {
-            setIsDemoMode(true);
-            setDeviceState('ready');
-          }
-          return;
+        if (mounted) {
+          tokenRef.current = token;
+          setIsDemoMode(demoMode ?? false);
         }
-
-        const device = new Device(token, {
-          codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU],
-        });
-
-        device.on('registered', () => {
-          if (mounted) setDeviceState('ready');
-        });
-
-        device.on('error', (err) => {
-          if (mounted) {
-            setError(err.message || 'Device error');
-            setDeviceState('error');
-          }
-        });
-
-        device.on('tokenWillExpire', async () => {
-          try {
-            const refreshRes = await tokenApi.getToken();
-            device.updateToken(refreshRes.data.token);
-          } catch {
-            if (mounted) setError('Failed to refresh token');
-          }
-        });
-
-        await device.register();
-        deviceRef.current = device;
       } catch (err) {
         if (mounted) {
-          setError(err instanceof Error ? err.message : 'Failed to initialize device');
-          setDeviceState('error');
+          setError(err instanceof Error ? err.message : 'Failed to fetch token');
         }
       }
     };
 
-    void initDevice();
+    void fetchToken();
 
     return () => {
       mounted = false;
@@ -85,7 +56,7 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
     };
   }, []);
 
-  const connect = useCallback(async (_conferenceName: string) => {
+  const connect = useCallback(async (conferenceName: string) => {
     // Demo mode: simulate connection
     if (isDemoMode) {
       setDeviceState('connecting');
@@ -97,8 +68,9 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
       return;
     }
 
-    if (!deviceRef.current) {
-      setError('Device not ready');
+    // Token not ready yet
+    if (!tokenRef.current) {
+      setError('Token not ready');
       return;
     }
 
@@ -106,9 +78,34 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
       setDeviceState('connecting');
       setError(null);
 
+      // Initialize device lazily on first connect (user gesture enables AudioContext)
+      if (!deviceRef.current) {
+        const device = new Device(tokenRef.current, {
+          codecPreferences: [Call.Codec.Opus, Call.Codec.PCMU],
+        });
+
+        device.on('error', (err) => {
+          setError(err.message || 'Device error');
+          setDeviceState('error');
+        });
+
+        device.on('tokenWillExpire', async () => {
+          try {
+            const refreshRes = await tokenApi.getToken();
+            device.updateToken(refreshRes.data.token);
+            tokenRef.current = refreshRes.data.token;
+          } catch {
+            setError('Failed to refresh token');
+          }
+        });
+
+        await device.register();
+        deviceRef.current = device;
+      }
+
       const call = await deviceRef.current.connect({
         params: {
-          To: _conferenceName,
+          To: conferenceName,
         },
       });
 
@@ -144,7 +141,6 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
 
   const toggleMute = useCallback(() => {
     if (isDemoMode) {
-      // In demo mode, just toggle the state
       setIsMuted((prev) => !prev);
       return;
     }
@@ -155,6 +151,12 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
     }
   }, [isMuted, isDemoMode]);
 
+  const sendDigits = useCallback((digits: string) => {
+    if (callRef.current) {
+      callRef.current.sendDigits(digits);
+    }
+  }, []);
+
   return {
     deviceState,
     isMuted,
@@ -162,5 +164,6 @@ export function useTwilioDevice(): UseTwilioDeviceReturn {
     connect,
     disconnect,
     toggleMute,
+    sendDigits,
   };
 }

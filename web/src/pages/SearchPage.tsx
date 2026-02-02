@@ -1,19 +1,29 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { searchApi, callApi, pharmacyApi, type SearchStatus } from '../services/api';
+import { searchApi, pharmacyApi, type SearchStatus } from '../services/api';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import { useToast } from '../components/Toast';
+import { useTwilioDevice } from '../hooks/useTwilioDevice';
 import SearchHeader from '../components/SearchHeader';
 import PharmacyList, { type PharmacyItem } from '../components/PharmacyList';
 import PharmacyMap from '../components/PharmacyMap';
 import MapListLayout from '../components/MapListLayout';
+import CallOverlay, { type CallPhase } from '../components/CallOverlay';
 import { type PharmacyStatus } from '../components/PharmacyCard';
+
+interface ActiveCall {
+  callId: string;
+  pharmacyId: string;
+  pharmacyName: string;
+  conferenceName: string;
+}
 
 export default function SearchPage() {
   const { searchId } = useParams<{ searchId: string }>();
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const { joinSearch, leaveSearch, onSearchUpdate, onPharmacistReady, onCallStateChange } = useWebSocket();
+  const { joinSearch, leaveSearch, onSearchUpdate, onPharmacistReady, onCallStateChange, onCallConnect } = useWebSocket();
+  const { deviceState, isMuted, error: deviceError, connect, disconnect, toggleMute, sendDigits } = useTwilioDevice();
 
   const [search, setSearch] = useState<SearchStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -21,6 +31,11 @@ export default function SearchPage() {
   const [highlightedPharmacyId, setHighlightedPharmacyId] = useState<string | null>(null);
   const [selectedPharmacyId, setSelectedPharmacyId] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  // Call overlay state
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [callPhase, setCallPhase] = useState<CallPhase>('dialing');
+  const [callStartTime, setCallStartTime] = useState(0);
 
   // Track pharmacy list refs for scrolling
   const pharmacyRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -106,7 +121,7 @@ export default function SearchPage() {
     });
   }, [searchId, onSearchUpdate]);
 
-  // Handle pharmacist ready notifications
+  // Handle pharmacist ready notifications (legacy - kept for compatibility)
   useEffect(() => {
     return onPharmacistReady((data) => {
       if (data.searchId !== searchId) return;
@@ -115,22 +130,6 @@ export default function SearchPage() {
       setHighlightedPharmacyId(data.pharmacyId);
       setSelectedPharmacyId(data.pharmacyId);
 
-      // Scroll to the pharmacy in the list
-      const ref = pharmacyRefs.current.get(data.pharmacyId);
-      if (ref) {
-        ref.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-
-      // Show toast notification
-      addToast(
-        `${data.pharmacyName} is ready to talk!`,
-        'success',
-        {
-          label: 'Join Call',
-          onClick: () => handleJoinCall(data.callId, data.pharmacyId),
-        }
-      );
-
       // Remove highlight after 10 seconds
       setTimeout(() => {
         setHighlightedPharmacyId((current) =>
@@ -138,7 +137,7 @@ export default function SearchPage() {
         );
       }, 10000);
     });
-  }, [searchId, onPharmacistReady, addToast]);
+  }, [searchId, onPharmacistReady]);
 
   // Handle call state changes
   useEffect(() => {
@@ -163,24 +162,102 @@ export default function SearchPage() {
     });
   }, [searchId, onCallStateChange]);
 
-  const handleJoinCall = useCallback(
-    async (callId: string, _pharmacyId: string) => {
-      try {
-        await callApi.join(callId);
-        navigate(`/call/${callId}`);
-      } catch (err) {
-        addToast('Failed to join call', 'error');
+  // Handle call_connect events - show overlay with Answer button
+  useEffect(() => {
+    console.log('[SearchPage] Setting up call_connect listener for searchId:', searchId);
+
+    return onCallConnect((data) => {
+      console.log('[SearchPage] call_connect event received:', data);
+      if (data.searchId !== searchId) {
+        console.log('[SearchPage] Ignoring - searchId mismatch:', data.searchId, '!==', searchId);
+        return;
       }
-    },
-    [navigate, addToast]
-  );
+
+      console.log('[SearchPage] call_connect received:', data);
+
+      // Set active call state - show overlay with Answer button
+      setActiveCall({
+        callId: data.callId,
+        pharmacyId: data.pharmacyId,
+        pharmacyName: data.pharmacyName,
+        conferenceName: data.conferenceName,
+      });
+      setCallPhase('ringing'); // Show Answer button first
+
+      // Highlight this pharmacy
+      setHighlightedPharmacyId(data.pharmacyId);
+      setSelectedPharmacyId(data.pharmacyId);
+
+      // Scroll to the pharmacy
+      const ref = pharmacyRefs.current.get(data.pharmacyId);
+      if (ref) {
+        ref.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+  }, [searchId, onCallConnect]);
+
+  // Handle Answer button click - connects to the conference (user gesture enables audio)
+  const handleAnswer = useCallback(() => {
+    if (!activeCall) return;
+    setCallPhase('dialing');
+    void connect(activeCall.conferenceName);
+  }, [activeCall, connect]);
+
+  // Track device state changes for the call overlay
+  useEffect(() => {
+    if (!activeCall) return;
+
+    if (deviceState === 'connecting') {
+      setCallPhase('dialing');
+    } else if (deviceState === 'connected') {
+      setCallPhase('connected');
+      setCallStartTime(Date.now());
+    } else if (deviceState === 'disconnected' && callPhase === 'connected') {
+      setCallPhase('ended');
+    } else if (deviceState === 'error') {
+      setCallPhase('error');
+    }
+  }, [deviceState, activeCall, callPhase]);
+
+  const handleHangUp = useCallback(() => {
+    disconnect();
+    setCallPhase('ended');
+  }, [disconnect]);
+
+  const handleOverlayMarkFound = useCallback(async () => {
+    if (!searchId || !activeCall) return;
+
+    try {
+      await searchApi.markFound(searchId, activeCall.pharmacyId);
+      addToast('Medication found!', 'success');
+      setActiveCall(null);
+    } catch {
+      addToast('Failed to mark as found', 'error');
+    }
+  }, [searchId, activeCall, addToast]);
+
+  const handleOverlayMarkNotFound = useCallback(async () => {
+    if (!activeCall) return;
+
+    // Disconnect if currently in a call
+    disconnect();
+
+    try {
+      await pharmacyApi.markNotFound(activeCall.pharmacyId);
+      addToast('Marked as not available — calling next pharmacy', 'info');
+      setActiveCall(null);
+      setCallPhase('ringing');
+    } catch {
+      addToast('Failed to update status', 'error');
+    }
+  }, [activeCall, disconnect, addToast]);
 
   const handleMarkNotFound = useCallback(
     async (pharmacyId: string) => {
       try {
         await pharmacyApi.markNotFound(pharmacyId);
         addToast('Marked as not available', 'info');
-      } catch (err) {
+      } catch {
         addToast('Failed to update status', 'error');
       }
     },
@@ -191,15 +268,26 @@ export default function SearchPage() {
     if (!searchId) return;
 
     try {
+      // Disconnect active call if any
+      if (activeCall) {
+        disconnect();
+        setActiveCall(null);
+      }
       await searchApi.cancel(searchId);
       addToast('Search cancelled', 'info');
-    } catch (err) {
+    } catch {
       addToast('Failed to cancel search', 'error');
     }
-  }, [searchId, addToast]);
+  }, [searchId, activeCall, disconnect, addToast]);
 
   const handleMarkFound = useCallback(async () => {
     if (!searchId || !search) return;
+
+    // If there's an active call, mark that pharmacy
+    if (activeCall) {
+      await handleOverlayMarkFound();
+      return;
+    }
 
     // Find a pharmacy with medication or that's connected
     const foundPharmacy = search.pharmacies.find(
@@ -214,10 +302,10 @@ export default function SearchPage() {
     try {
       await searchApi.markFound(searchId, foundPharmacy.pharmacyId);
       addToast('Medication found!', 'success');
-    } catch (err) {
+    } catch {
       addToast('Failed to mark as found', 'error');
     }
-  }, [searchId, search, addToast]);
+  }, [searchId, search, activeCall, handleOverlayMarkFound, addToast]);
 
   // Handle pharmacy selection from map
   const handlePharmacySelect = useCallback((pharmacyId: string) => {
@@ -265,17 +353,25 @@ export default function SearchPage() {
     );
   }
 
-  const pharmacies: PharmacyItem[] = search.pharmacies.map((p) => ({
-    pharmacyId: p.pharmacyId,
-    pharmacyName: p.pharmacyName,
-    address: p.address,
-    phone: p.phone,
-    phoneSource: p.phoneSource,
-    status: p.hasMedication === false ? 'completed' : mapSearchStatusToPharmacyStatus(p.status, p.isHumanReady, p.isVoicemailReady),
-    hasMedication: p.hasMedication,
-    callId: p.callId ?? p.pharmacyId,
-    distance: p.distance,
-  }));
+  // Deduplicate pharmacies by name+address (OSM can return both node + way for same location)
+  const seen = new Set<string>();
+  const pharmacies: PharmacyItem[] = [];
+  for (const p of search.pharmacies) {
+    const key = `${p.pharmacyName.toLowerCase()}|${p.address.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pharmacies.push({
+      pharmacyId: p.pharmacyId,
+      pharmacyName: p.pharmacyName,
+      address: p.address,
+      phone: p.phone,
+      phoneSource: p.phoneSource,
+      status: p.hasMedication === false ? 'completed' : mapSearchStatusToPharmacyStatus(p.status, p.isHumanReady, p.isVoicemailReady),
+      hasMedication: p.hasMedication,
+      callId: p.callId ?? p.pharmacyId,
+      distance: p.distance,
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -297,7 +393,7 @@ export default function SearchPage() {
             userLocation={userLocation}
             selectedPharmacyId={selectedPharmacyId}
             onPharmacySelect={handlePharmacySelect}
-            onJoinCall={(pharmacyId, callId) => handleJoinCall(callId, pharmacyId)}
+            onJoinCall={undefined}
             onMarkNotFound={handleMarkNotFound}
           />
         }
@@ -306,13 +402,30 @@ export default function SearchPage() {
             pharmacies={pharmacies}
             highlightedPharmacyId={highlightedPharmacyId}
             selectedPharmacyId={selectedPharmacyId}
-            onJoinCall={handleJoinCall}
+            onJoinCall={undefined}
             onMarkNotFound={handleMarkNotFound}
             onPharmacyClick={handlePharmacyClick}
             registerRef={registerPharmacyRef}
           />
         }
       />
+
+      {/* Call Overlay - floating panel when a call is active */}
+      {activeCall && (
+        <CallOverlay
+          pharmacyName={activeCall.pharmacyName}
+          callPhase={callPhase}
+          callStartTime={callStartTime}
+          isMuted={isMuted}
+          error={deviceError}
+          onToggleMute={toggleMute}
+          onHangUp={handleHangUp}
+          onMarkFound={handleOverlayMarkFound}
+          onMarkNotFound={handleOverlayMarkNotFound}
+          onAnswer={handleAnswer}
+          onSendDigits={sendDigits}
+        />
+      )}
     </div>
   );
 }

@@ -233,19 +233,25 @@ export const osmService = {
         rawResults: elements.length,
       }, 'Overpass API returned results');
 
-      // Parse elements into pharmacies
+      // Parse elements into pharmacies, deduplicating by name+address
+      // OSM can have both a node and a way for the same physical pharmacy
       let pharmacies: OSMPharmacy[] = [];
+      const seenKeys = new Set<string>();
       for (const element of elements) {
         const pharmacy = parseOSMElement(element, latitude, longitude);
         if (pharmacy) {
-          pharmacies.push(pharmacy);
+          const dedupKey = `${pharmacy.name.toLowerCase()}|${pharmacy.address.toLowerCase()}`;
+          if (!seenKeys.has(dedupKey)) {
+            seenKeys.add(dedupKey);
+            pharmacies.push(pharmacy);
+          }
         }
       }
 
       logger.info({
         parsed: pharmacies.length,
-        skipped: elements.length - pharmacies.length,
-      }, 'Parsed OSM pharmacies');
+        duplicatesRemoved: elements.length - pharmacies.length,
+      }, 'Parsed OSM pharmacies (deduplicated)');
 
       // Apply chain filter if specified
       if (chainFilter && chainFilter.length > 0) {

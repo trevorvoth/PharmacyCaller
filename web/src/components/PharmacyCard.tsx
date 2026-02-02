@@ -47,7 +47,7 @@ const statusConfig: Record<PharmacyStatus, { label: string; color: string; bgCol
     bgColor: 'bg-gray-100 dark:bg-gray-800',
   },
   calling: {
-    label: 'Calling',
+    label: 'Ready to Call',
     color: 'text-amber-600 dark:text-amber-400',
     bgColor: 'bg-amber-50 dark:bg-amber-950',
   },

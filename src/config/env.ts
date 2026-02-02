@@ -28,6 +28,7 @@ const envSchema = z.object({
   TWILIO_PHONE_NUMBER: z.string().startsWith('+'),
   TWILIO_API_KEY_SID: z.string().optional(),
   TWILIO_API_KEY_SECRET: z.string().optional(),
+  TWILIO_TWIML_APP_SID: z.string().startsWith('AP').optional(),
 
   // OpenAI
   OPENAI_API_KEY: z.string().startsWith('sk-'),

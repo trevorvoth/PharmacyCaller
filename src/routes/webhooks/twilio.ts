@@ -6,6 +6,7 @@ import { CallState } from '../../types/callStates.js';
 import { metrics, METRICS } from '../../services/metrics.js';
 import { validateTwilioSignature } from '../../middleware/webhookAuth.js';
 import { notificationService } from '../../services/notifications.js';
+import { pharmacyTracker } from '../../services/pharmacyTracker.js';
 
 const webhookLogger = logger.child({ service: 'twilio-webhooks' });
 
@@ -53,8 +54,8 @@ function mapTwilioStatusToCallState(twilioStatus: string): CallState | null {
     case 'ringing':
       return CallState.DIALING;
     case 'in-progress':
-      // Don't automatically transition - let OpenAI events handle IVR/HOLD states
-      return null;
+      // Direct connection mode: pharmacy answered, mark as connected
+      return CallState.CONNECTED;
     case 'completed':
       return CallState.ENDED;
     case 'busy':
@@ -120,18 +121,24 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
         await metrics.increment(callCountMetric);
       }
 
-      // For outbound calls, we need to connect to media streams
-      // The call orchestrator should have created a call state with CallSid lookup
-      // Return TwiML that connects to our media streams endpoint
+      // Get the callId from query params (passed when initiating the call)
+      const query = request.query as Record<string, string>;
+      const callId = query?.callId ?? 'unknown';
+
+      webhookLogger.info({
+        callId,
+        callSid: CallSid,
+      }, 'Connecting pharmacy to conference');
+
+      // Direct connection mode: put the pharmacy into a conference
+      // The user's browser will join the same conference via the client-voice webhook
+      const conferenceName = `call-${callId}`;
 
       const twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <Stream url="wss://${request.hostname}/media-stream">
-      <Parameter name="CallSid" value="${CallSid}"/>
-      <Parameter name="Direction" value="${Direction}"/>
-    </Stream>
-  </Connect>
+  <Dial>
+    <Conference startConferenceOnEnter="true" endConferenceOnExit="false" beep="false">${conferenceName}</Conference>
+  </Dial>
 </Response>`;
 
       void reply.type('text/xml');
@@ -189,6 +196,9 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
             twilioCallDuration: CallDuration,
           },
         });
+
+        // Update pharmacy tracker (sends WebSocket notification to frontend)
+        await pharmacyTracker.updateFromCallState(callData.searchId, callId, newState);
 
         // Send notification for state change
         await notificationService.sendCallStatusUpdate(callData.searchId, {
@@ -281,6 +291,60 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
 <Response>
   <Say>We're sorry, but we're experiencing technical difficulties. Please try again later.</Say>
   <Hangup/>
+</Response>`;
+
+      void reply.type('text/xml');
+      return reply.send(twiml);
+    }
+  );
+  /**
+   * POST /webhooks/twilio/client-voice
+   * Called by Twilio when a browser client (Device.connect) initiates a call.
+   * The TwiML App's voice URL should point to this endpoint.
+   * Returns TwiML to join the user to the pharmacy's conference.
+   */
+  app.post(
+    '/webhooks/twilio/client-voice',
+    {
+      preHandler: validateTwilioSignature,
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = request.body as Record<string, string>;
+      const to = body?.To ?? '';
+      const callSid = body?.CallSid ?? '';
+
+      webhookLogger.info({
+        callSid,
+        to,
+      }, 'Client voice webhook received');
+
+      // The frontend passes the conference name as the "To" parameter
+      // Format: "call-{callId}"
+      const conferenceName = to;
+
+      if (!conferenceName || !conferenceName.startsWith('call-')) {
+        webhookLogger.warn({ to }, 'Invalid conference name from client');
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>Invalid call configuration.</Say>
+  <Hangup/>
+</Response>`;
+        void reply.type('text/xml');
+        return reply.send(twiml);
+      }
+
+      webhookLogger.info({
+        conferenceName,
+        callSid,
+      }, 'Joining user to pharmacy conference');
+
+      // Join the user to the same conference as the pharmacy
+      // endConferenceOnExit=true: when user hangs up, end the conference (and pharmacy call)
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial>
+    <Conference startConferenceOnEnter="true" endConferenceOnExit="true" beep="false">${conferenceName}</Conference>
+  </Dial>
 </Response>`;
 
       void reply.type('text/xml');
