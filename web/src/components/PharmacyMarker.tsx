@@ -17,7 +17,9 @@ interface PharmacyMarkerProps {
 // Map status to marker colors (matching PharmacyCard)
 const statusColors: Record<PharmacyStatus, { bg: string; border: string; glow?: string }> = {
   pending: { bg: '#9CA3AF', border: '#6B7280' }, // gray
+  dialing: { bg: '#F59E0B', border: '#D97706', glow: '#FCD34D' }, // amber
   calling: { bg: '#F59E0B', border: '#D97706', glow: '#FCD34D' }, // amber
+  ivr: { bg: '#06B6D4', border: '#0891B2', glow: '#67E8F9' }, // cyan
   on_hold: { bg: '#3B82F6', border: '#2563EB', glow: '#93C5FD' }, // blue
   ready: { bg: '#10B981', border: '#059669', glow: '#6EE7B7' }, // green (primary)
   connected: { bg: '#10B981', border: '#059669', glow: '#6EE7B7' }, // green
@@ -39,7 +41,7 @@ export default function PharmacyMarker({
   const status = pharmacy.status as PharmacyStatus;
   const colors = statusColors[status] || statusColors.pending;
   const isReady = status === 'ready';
-  const isActive = status === 'calling' || status === 'on_hold' || status === 'ready' || status === 'connected';
+  const isActive = status === 'dialing' || status === 'calling' || status === 'ivr' || status === 'on_hold' || status === 'ready' || status === 'connected';
 
   const handleClick = useCallback(() => {
     setIsInfoWindowOpen(true);

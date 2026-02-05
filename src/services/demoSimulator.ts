@@ -115,20 +115,27 @@ export const demoSimulator = {
     const t3 = setTimeout(async () => {
       await callStateMachine.transition(callId, CallState.HUMAN_DETECTED, {
         reason: 'Demo: Pharmacist answered',
+        conferenceName: `call-${callId}`,
       });
       await pharmacyTracker.updateFromCallState(searchId, callId, CallState.HUMAN_DETECTED);
 
-      // Send notification to user
-      const state = await callStateMachine.getState(callId);
-      if (state) {
-        await notificationService.sendPharmacistReady(searchId, {
-          searchId,
-          callId: state.callId,
-          pharmacyId: state.pharmacyId,
-          pharmacyName: state.pharmacyName,
-          message: `A pharmacist at ${state.pharmacyName} is ready to speak with you!`,
-        });
-      }
+      // Send call_connect notification to show overlay with Answer button
+      await notificationService.sendCallConnect(searchId, {
+        searchId,
+        callId,
+        pharmacyId,
+        pharmacyName,
+        conferenceName: `call-${callId}`,
+      });
+
+      // Also send pharmacist_ready for legacy compatibility
+      await notificationService.sendPharmacistReady(searchId, {
+        searchId,
+        callId,
+        pharmacyId,
+        pharmacyName,
+        message: `A pharmacist at ${pharmacyName} is ready to speak with you!`,
+      });
 
       demoLogger.info({ callId, pharmacyName }, 'Demo: Human detected - pharmacist ready');
     }, holdDelay);

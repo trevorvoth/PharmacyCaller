@@ -80,11 +80,12 @@ export interface SearchStatus {
     address: string;
     phone: string;
     phoneSource: 'google' | 'nppes' | null;
-    status: 'pending' | 'calling' | 'on_hold' | 'ready' | 'connected' | 'completed' | 'failed' | 'voicemail';
+    status: 'pending' | 'dialing' | 'calling' | 'ivr' | 'on_hold' | 'ready' | 'connected' | 'completed' | 'failed' | 'voicemail';
     hasMedication: boolean | null;
     isHumanReady: boolean;
     isVoicemailReady: boolean;
     callId: string | null;
+    callState: string | null;
     latitude: number;
     longitude: number;
     distance: number | null; // Distance in meters from search location

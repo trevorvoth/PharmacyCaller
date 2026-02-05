@@ -1,12 +1,14 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { logger } from '../../utils/logger.js';
+import { env } from '../../config/env.js';
 import { callStateMachine } from '../../services/callStateMachine.js';
 import { CallState } from '../../types/callStates.js';
 import { metrics, METRICS } from '../../services/metrics.js';
 import { validateTwilioSignature } from '../../middleware/webhookAuth.js';
 import { notificationService } from '../../services/notifications.js';
 import { pharmacyTracker } from '../../services/pharmacyTracker.js';
+import { redis } from '../../services/redis.js';
 
 const webhookLogger = logger.child({ service: 'twilio-webhooks' });
 
@@ -128,18 +130,93 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
       webhookLogger.info({
         callId,
         callSid: CallSid,
-      }, 'Connecting pharmacy to conference');
+        demoMode: env.DEMO_MODE,
+        troubleshootMode: env.TROUBLESHOOT_MODE,
+      }, 'Processing voice webhook');
 
-      // Direct connection mode: put the pharmacy into a conference
-      // The user's browser will join the same conference via the client-voice webhook
-      const conferenceName = `call-${callId}`;
+      let twiml: string;
 
-      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+      if (env.DEMO_MODE) {
+        // Demo mode: put the pharmacy into a conference directly (no AI)
+        // The user's browser will join the same conference via the client-voice webhook
+        const conferenceName = `call-${callId}`;
+
+        webhookLogger.info({
+          callId,
+          callSid: CallSid,
+          conferenceName,
+        }, 'Demo mode: connecting pharmacy to conference');
+
+        twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial>
     <Conference startConferenceOnEnter="true" endConferenceOnExit="false" beep="false">${conferenceName}</Conference>
   </Dial>
 </Response>`;
+      } else {
+        // AI mode: stream audio to our media-stream WebSocket for AI processing
+        const webhookBaseUrl = env.WEBHOOK_BASE_URL;
+
+        if (!webhookBaseUrl) {
+          webhookLogger.error('WEBHOOK_BASE_URL not configured - cannot stream audio');
+          // Fall back to conference mode
+          const conferenceName = `call-${callId}`;
+          twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial>
+    <Conference startConferenceOnEnter="true" endConferenceOnExit="false" beep="false">${conferenceName}</Conference>
+  </Dial>
+</Response>`;
+        } else {
+          // Convert https:// to wss:// for WebSocket
+          // Note: callId is passed as a Stream Parameter, not in URL query (Twilio doesn't forward query params)
+          const streamUrl = webhookBaseUrl.replace('https://', 'wss://') + '/media-stream';
+
+          webhookLogger.info({
+            callId,
+            callSid: CallSid,
+            streamUrl,
+          }, 'AI mode: streaming pharmacy audio to OpenAI');
+
+          if (env.TROUBLESHOOT_MODE) {
+            // Troubleshoot mode: enable recording for debugging
+            // Use <Start><Stream> + <Record> to do both simultaneously
+            const recordingStatusUrl = `${webhookBaseUrl}/webhooks/twilio/recording-status?callId=${callId}`;
+
+            webhookLogger.info({
+              callId,
+              recordingStatusUrl,
+            }, 'Troubleshoot mode: enabling call recording');
+
+            twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Start>
+    <Stream url="${streamUrl}">
+      <Parameter name="callId" value="${callId}" />
+    </Stream>
+  </Start>
+  <Record
+    recordingStatusCallback="${recordingStatusUrl}"
+    recordingStatusCallbackEvent="completed"
+    recordingStatusCallbackMethod="POST"
+    trim="do-not-trim"
+    maxLength="600"
+  />
+  <Pause length="600"/>
+</Response>`;
+          } else {
+            // Normal AI mode: just stream audio
+            twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Connect>
+    <Stream url="${streamUrl}">
+      <Parameter name="callId" value="${callId}" />
+    </Stream>
+  </Connect>
+</Response>`;
+          }
+        }
+      }
 
       void reply.type('text/xml');
       return reply.send(twiml);
@@ -349,6 +426,54 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
 
       void reply.type('text/xml');
       return reply.send(twiml);
+    }
+  );
+
+  /**
+   * POST /webhooks/twilio/recording-status
+   * Recording status callback - called when call recording completes
+   * (Only used in troubleshoot mode)
+   */
+  app.post(
+    '/webhooks/twilio/recording-status',
+    {
+      preHandler: validateTwilioSignature,
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const body = request.body as Record<string, string>;
+      const query = request.query as Record<string, string>;
+      const callId = query?.callId;
+      const recordingUrl = body?.RecordingUrl;
+      const recordingSid = body?.RecordingSid;
+      const recordingDuration = body?.RecordingDuration;
+      const recordingStatus = body?.RecordingStatus;
+
+      webhookLogger.info({
+        callId,
+        recordingUrl,
+        recordingSid,
+        recordingDuration,
+        recordingStatus,
+      }, 'Recording status callback received');
+
+      if (callId && recordingUrl && recordingStatus === 'completed') {
+        // Store recording URL in Redis for later retrieval (24 hour TTL)
+        const recordingData = JSON.stringify({
+          url: recordingUrl + '.mp3', // Add .mp3 for browser playback
+          sid: recordingSid,
+          duration: recordingDuration,
+          createdAt: Date.now(),
+        });
+
+        await redis.set(`recording:${callId}`, recordingData, 'EX', 86400);
+
+        webhookLogger.info({
+          callId,
+          recordingSid,
+        }, 'Recording stored for troubleshoot mode');
+      }
+
+      return reply.status(204).send();
     }
   );
 }

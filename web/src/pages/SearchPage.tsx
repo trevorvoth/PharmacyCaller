@@ -389,7 +389,7 @@ export default function SearchPage() {
       address: p.address,
       phone: p.phone,
       phoneSource: p.phoneSource,
-      status: p.hasMedication === false ? 'completed' : mapSearchStatusToPharmacyStatus(p.status, p.isHumanReady, p.isVoicemailReady),
+      status: p.hasMedication === false ? 'completed' : mapSearchStatusToPharmacyStatus(p.status, p.isHumanReady, p.isVoicemailReady, p.callState),
       hasMedication: p.hasMedication,
       callId: p.callId ?? p.pharmacyId,
       distance: p.distance,
@@ -464,10 +464,16 @@ export default function SearchPage() {
 function mapSearchStatusToPharmacyStatus(
   status: string,
   isHumanReady: boolean,
-  isVoicemailReady: boolean
+  isVoicemailReady: boolean,
+  callState?: string | null
 ): PharmacyStatus {
   if (isHumanReady) return 'ready';
   if (isVoicemailReady) return 'voicemail';
+
+  // Use detailed callState if available for more granular status
+  if (callState) {
+    return mapCallStateToStatus(callState);
+  }
 
   const statusMap: Record<string, PharmacyStatus> = {
     pending: 'pending',
@@ -485,10 +491,10 @@ function mapSearchStatusToPharmacyStatus(
 function mapCallStateToStatus(state: string): PharmacyStatus {
   const stateMap: Record<string, PharmacyStatus> = {
     CREATED: 'pending',
-    DIALING: 'calling',
-    RINGING: 'calling',
+    DIALING: 'dialing',
+    RINGING: 'dialing',
     IN_PROGRESS: 'calling',
-    IVR: 'calling',
+    IVR: 'ivr',
     HOLD: 'on_hold',
     HUMAN_DETECTED: 'ready',
     VOICEMAIL: 'voicemail',
@@ -498,6 +504,7 @@ function mapCallStateToStatus(state: string): PharmacyStatus {
     FAILED: 'failed',
     NO_ANSWER: 'failed',
     BUSY: 'failed',
+    IVR_FAILED: 'failed',
   };
 
   return stateMap[state] || 'pending';

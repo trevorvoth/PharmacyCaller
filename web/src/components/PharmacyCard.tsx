@@ -2,7 +2,9 @@ import { type ReactNode } from 'react';
 
 export type PharmacyStatus =
   | 'pending'
+  | 'dialing'
   | 'calling'
+  | 'ivr'
   | 'on_hold'
   | 'ready'
   | 'connected'
@@ -46,10 +48,20 @@ const statusConfig: Record<PharmacyStatus, { label: string; color: string; bgCol
     color: 'text-gray-600 dark:text-gray-400',
     bgColor: 'bg-gray-100 dark:bg-gray-800',
   },
-  calling: {
-    label: 'Ready to Call',
+  dialing: {
+    label: 'Dialing...',
     color: 'text-amber-600 dark:text-amber-400',
     bgColor: 'bg-amber-50 dark:bg-amber-950',
+  },
+  calling: {
+    label: 'Calling...',
+    color: 'text-amber-600 dark:text-amber-400',
+    bgColor: 'bg-amber-50 dark:bg-amber-950',
+  },
+  ivr: {
+    label: 'Navigating Menu...',
+    color: 'text-cyan-600 dark:text-cyan-400',
+    bgColor: 'bg-cyan-50 dark:bg-cyan-950',
   },
   on_hold: {
     label: 'On Hold',

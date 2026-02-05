@@ -385,6 +385,10 @@ export const pharmacyTracker = {
     // Mark orchestrator search state as cancelled (prevents startNextCall from firing)
     await callOrchestrator.cancelSearch(searchId);
 
+    // Clean up audio bridges for this search (dynamic import to avoid circular dependency)
+    const { audioBridgeManager } = await import('./audioBridgeManager.js');
+    audioBridgeManager.cleanupSearch(searchId);
+
     // End all active Twilio calls
     await callQueue.endAllCalls(searchId);
 
@@ -500,6 +504,7 @@ export const pharmacyTracker = {
     pharmacyName: string;
     address: string;
     status: 'pending' | 'calling' | 'on_hold' | 'ready' | 'connected' | 'completed' | 'failed';
+    callState: string | null;
     hasMedication: boolean | null;
     isHumanReady: boolean;
     isVoicemailReady: boolean;
@@ -513,6 +518,7 @@ export const pharmacyTracker = {
       pharmacyName: p.pharmacyName,
       address: p.address,
       status: p.callStatus.toLowerCase() as 'pending' | 'calling' | 'on_hold' | 'ready' | 'connected' | 'completed' | 'failed',
+      callState: p.callState,
       hasMedication: p.hasMedication,
       isHumanReady: p.isHumanReady,
       isVoicemailReady: p.isVoicemailReady,

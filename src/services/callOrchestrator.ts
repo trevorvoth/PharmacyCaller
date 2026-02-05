@@ -184,15 +184,7 @@ export const callOrchestrator = {
           pharmacyName: pharmacy.name,
         }, 'Demo call simulation started');
 
-        // Notify frontend to show call overlay (demo mode - no real Twilio Device connect)
-        await notificationService.sendCallConnect(searchId, {
-          searchId,
-          callId,
-          pharmacyId: pharmacy.id,
-          pharmacyName: pharmacy.name,
-          conferenceName: `call-${callId}`,
-        });
-
+        // Note: call_connect will be sent by demoSimulator when HUMAN_DETECTED
         return callStateMachine.getState(callId);
       }
 
@@ -219,15 +211,7 @@ export const callOrchestrator = {
         pharmacyName: pharmacy.name,
       }, 'Twilio call initiated successfully');
 
-      // Notify frontend to connect user's browser to the conference
-      await notificationService.sendCallConnect(searchId, {
-        searchId,
-        callId,
-        pharmacyId: pharmacy.id,
-        pharmacyName: pharmacy.name,
-        conferenceName: `call-${callId}`,
-      });
-
+      // Note: call_connect will be sent by audioBridgeManager when HUMAN_DETECTED
       return callStateMachine.getState(callId);
     } catch (error) {
       orchestratorLogger.error({

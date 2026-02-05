@@ -12,6 +12,9 @@ const envSchema = z.object({
   // Demo mode - simulates calls without Twilio
   DEMO_MODE: z.string().default('false').transform((val) => val === 'true'),
 
+  // Troubleshoot mode - enables call recording for debugging AI-IVR interactions
+  TROUBLESHOOT_MODE: z.string().default('false').transform((val) => val === 'true'),
+
   // Database
   DATABASE_URL: z.string().url(),
 

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../db/client.js';
 import { logger } from '../utils/logger.js';
+import { redis } from '../services/redis.js';
 import { callStateMachine } from '../services/callStateMachine.js';
 import { callQueue } from '../services/callQueue.js';
 import { pharmacyTracker } from '../services/pharmacyTracker.js';
@@ -413,6 +414,72 @@ export async function callRoutes(app: FastifyInstance): Promise<void> {
       return reply.send({
         success: true,
         muted,
+      });
+    }
+  );
+
+  /**
+   * GET /calls/:id/recording
+   * Get call recording URL (for troubleshoot mode debugging)
+   */
+  app.get(
+    '/calls/:id/recording',
+    {
+      preHandler: app.authenticate,
+    },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const user = request.user!;
+      const { id: callId } = (request.params as { id: string });
+
+      // Check if troubleshoot mode is enabled
+      if (!env.TROUBLESHOOT_MODE) {
+        return reply.status(404).send({
+          error: 'Not found',
+          message: 'Call recordings are only available in troubleshoot mode.',
+        });
+      }
+
+      const callData = await callStateMachine.getState(callId);
+
+      if (!callData) {
+        return reply.status(404).send({ error: 'Call not found' });
+      }
+
+      // Verify user owns this search
+      const search = await prisma.pharmacySearch.findUnique({
+        where: { id: callData.searchId },
+      });
+
+      if (!search || search.userId !== user.userId) {
+        return reply.status(403).send({ error: 'Access denied' });
+      }
+
+      // Get recording from Redis
+      const recordingData = await redis.get(`recording:${callId}`);
+
+      if (!recordingData) {
+        return reply.status(404).send({
+          error: 'Recording not found',
+          message: 'No recording available for this call. It may still be processing or the call did not have recording enabled.',
+        });
+      }
+
+      const recording = JSON.parse(recordingData) as {
+        url: string;
+        sid: string;
+        duration: string;
+        createdAt: number;
+      };
+
+      callLogger.info({
+        callId,
+        recordingSid: recording.sid,
+      }, 'Recording retrieved');
+
+      return reply.send({
+        callId,
+        pharmacyName: callData.pharmacyName,
+        recording,
       });
     }
   );

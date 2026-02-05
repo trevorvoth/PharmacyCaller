@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
 import { env } from './config/env.js';
 import { logger } from './utils/logger.js';
 import { initSentry, sentryErrorHandler } from './utils/sentry.js';
@@ -13,6 +14,7 @@ import { searchRoutes } from './routes/searches.js';
 import { callRoutes } from './routes/calls.js';
 import { tokenRoutes } from './routes/token.js';
 import { twilioWebhookRoutes } from './routes/webhooks/twilio.js';
+import { handleMediaStream } from './routes/webhooks/mediaStream.js';
 import { initWebSocketServer, closeWebSocketServer } from './websocket/server.js';
 
 // Initialize Sentry first
@@ -29,6 +31,9 @@ await app.register(cors, {
     : true,
   credentials: true,
 });
+
+// Register WebSocket plugin for Twilio media streams
+await app.register(websocket);
 
 // Register auth decorator
 registerAuthHook(app);
@@ -71,6 +76,9 @@ await app.register(searchRoutes);
 await app.register(callRoutes);
 await app.register(tokenRoutes);
 await app.register(twilioWebhookRoutes);
+
+// WebSocket route for Twilio media streams (AI audio bridge)
+app.get('/media-stream', { websocket: true }, handleMediaStream);
 
 // Global error handler
 app.setErrorHandler((error, request, reply) => {

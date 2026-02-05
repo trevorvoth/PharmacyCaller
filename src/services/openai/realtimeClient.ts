@@ -28,6 +28,7 @@ export interface RealtimeEvent {
     status: string;
   };
   delta?: string;
+  transcript?: string; // For input transcription completed events
   error?: {
     type: string;
     message: string;
@@ -39,6 +40,7 @@ export interface RealtimeEvents {
   connected: (sessionId: string) => void;
   audio: (audioBuffer: Buffer) => void;
   transcript: (text: string, isFinal: boolean) => void;
+  inputTranscript: (text: string) => void; // Transcription of input (pharmacy) audio
   functionCall: (name: string, args: Record<string, unknown>) => void;
   error: (error: Error) => void;
   disconnected: () => void;
@@ -98,18 +100,31 @@ export class OpenAIRealtimeClient extends EventEmitter {
   }
 
   private configureSession(config: RealtimeSessionConfig): void {
+    // Transform turnDetection from camelCase to snake_case for OpenAI API
+    const turnDetection = config.turnDetection
+      ? {
+          type: config.turnDetection.type,
+          threshold: config.turnDetection.threshold ?? 0.5,
+          prefix_padding_ms: config.turnDetection.prefixPaddingMs ?? 300,
+          silence_duration_ms: config.turnDetection.silenceDurationMs ?? 500,
+        }
+      : {
+          type: 'server_vad',
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 500,
+        };
+
     const sessionConfig = {
       modalities: ['text', 'audio'],
       instructions: config.instructions,
       voice: config.voice ?? openaiConfig.voice,
       input_audio_format: config.inputAudioFormat ?? openaiConfig.audioFormat,
       output_audio_format: config.outputAudioFormat ?? openaiConfig.audioFormat,
-      turn_detection: config.turnDetection ?? {
-        type: 'server_vad',
-        threshold: 0.5,
-        prefix_padding_ms: 300,
-        silence_duration_ms: 500,
+      input_audio_transcription: {
+        model: 'whisper-1',
       },
+      turn_detection: turnDetection,
     };
 
     this.send({
@@ -155,7 +170,11 @@ export class OpenAIRealtimeClient extends EventEmitter {
         break;
 
       case 'conversation.item.input_audio_transcription.completed':
-        // User speech transcript
+        // Input audio transcript (pharmacy side)
+        if (event.transcript) {
+          realtimeLogger.debug({ transcript: event.transcript }, 'Input audio transcript received');
+          this.emit('inputTranscript', event.transcript);
+        }
         break;
 
       case 'response.function_call_arguments.done':

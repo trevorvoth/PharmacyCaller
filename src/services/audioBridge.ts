@@ -14,6 +14,7 @@ export interface AudioBridgeEvents {
   humanDetected: () => void;
   voicemailDetected: () => void;
   ivrFailed: () => void;
+  holdDetected: () => void;
   transcript: (text: string, speaker: 'ai' | 'pharmacy') => void;
   error: (error: Error) => void;
   disconnected: () => void;
@@ -75,6 +76,12 @@ export class AudioBridge extends EventEmitter {
       this.emit('transcript', text, 'ai');
     });
 
+    // Handle input audio transcription (pharmacy side)
+    this.realtimeClient.on('inputTranscript', (text: string) => {
+      bridgeLogger.debug({ transcript: text }, 'Pharmacy transcript received');
+      this.emit('transcript', text, 'pharmacy');
+    });
+
     this.realtimeClient.on('error', (error: Error) => {
       bridgeLogger.error({ err: error }, 'OpenAI Realtime error');
       this.emit('error', error);
@@ -98,6 +105,9 @@ export class AudioBridge extends EventEmitter {
     } else if (upperText.includes('[IVR_FAILED]')) {
       bridgeLogger.info('IVR navigation failed');
       this.emit('ivrFailed');
+    } else if (upperText.includes('[ON_HOLD]')) {
+      bridgeLogger.info('On hold detected');
+      this.emit('holdDetected');
     }
   }
 

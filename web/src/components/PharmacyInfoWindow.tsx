@@ -14,7 +14,9 @@ interface PharmacyInfoWindowProps {
 
 const statusLabels: Record<PharmacyStatus, string> = {
   pending: 'Pending',
+  dialing: 'Dialing...',
   calling: 'Calling...',
+  ivr: 'Navigating Menu...',
   on_hold: 'On Hold',
   ready: 'Ready to Talk',
   connected: 'Connected',
@@ -25,7 +27,9 @@ const statusLabels: Record<PharmacyStatus, string> = {
 
 const statusColors: Record<PharmacyStatus, string> = {
   pending: 'bg-gray-100 text-gray-600',
+  dialing: 'bg-amber-100 text-amber-700',
   calling: 'bg-amber-100 text-amber-700',
+  ivr: 'bg-cyan-100 text-cyan-700',
   on_hold: 'bg-blue-100 text-blue-700',
   ready: 'bg-green-100 text-green-700',
   connected: 'bg-green-100 text-green-700',
