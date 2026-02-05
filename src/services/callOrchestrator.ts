@@ -401,7 +401,7 @@ export const callOrchestrator = {
 
     // Get tracker state to find pending pharmacies
     const trackerState = await pharmacyTracker.getState(searchId);
-    if (!trackerState) {
+    if (!trackerState || trackerState.status === 'CANCELLED' || trackerState.status === 'COMPLETED') {
       return false;
     }
 

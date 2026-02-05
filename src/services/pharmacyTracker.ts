@@ -382,7 +382,10 @@ export const pharmacyTracker = {
       },
     });
 
-    // End all calls
+    // Mark orchestrator search state as cancelled (prevents startNextCall from firing)
+    await callOrchestrator.cancelSearch(searchId);
+
+    // End all active Twilio calls
     await callQueue.endAllCalls(searchId);
 
     // Cancel any pending demo simulations
