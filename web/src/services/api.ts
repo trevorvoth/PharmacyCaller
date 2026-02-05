@@ -93,6 +93,12 @@ export interface SearchStatus {
     latitude: number;
     longitude: number;
   };
+  activeCall: {
+    callId: string;
+    pharmacyId: string;
+    pharmacyName: string;
+    conferenceName: string;
+  } | null;
 }
 
 export interface CallStatus {

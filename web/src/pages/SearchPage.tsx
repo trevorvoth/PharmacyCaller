@@ -39,6 +39,8 @@ export default function SearchPage() {
 
   // Track pharmacy list refs for scrolling
   const pharmacyRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Track whether we've already restored an active call from the API (avoid re-triggering on polls)
+  const activeCallRestoredRef = useRef(false);
 
   // Get user's current location
   useEffect(() => {
@@ -69,6 +71,22 @@ export default function SearchPage() {
         if (!isCancelled) {
           setSearch(res.data);
           setError('');
+
+          // If the API reports an active call and we haven't restored one yet,
+          // set it up (fixes race condition where call_connect fires before we join the WS room)
+          if (res.data.activeCall && !activeCallRestoredRef.current) {
+            activeCallRestoredRef.current = true;
+            const ac = res.data.activeCall;
+            setActiveCall({
+              callId: ac.callId,
+              pharmacyId: ac.pharmacyId,
+              pharmacyName: ac.pharmacyName,
+              conferenceName: ac.conferenceName,
+            });
+            setCallPhase('ringing');
+            setHighlightedPharmacyId(ac.pharmacyId);
+            setSelectedPharmacyId(ac.pharmacyId);
+          }
         }
       } catch (err: unknown) {
         if (!isCancelled) {
@@ -175,6 +193,9 @@ export default function SearchPage() {
 
       console.log('[SearchPage] call_connect received:', data);
 
+      // Mark as restored so the poll doesn't redundantly set it up
+      activeCallRestoredRef.current = true;
+
       // Set active call state - show overlay with Answer button
       setActiveCall({
         callId: data.callId,
@@ -231,6 +252,7 @@ export default function SearchPage() {
       await searchApi.markFound(searchId, activeCall.pharmacyId);
       addToast('Medication found!', 'success');
       setActiveCall(null);
+      activeCallRestoredRef.current = false;
     } catch {
       addToast('Failed to mark as found', 'error');
     }
@@ -246,6 +268,7 @@ export default function SearchPage() {
       await pharmacyApi.markNotFound(activeCall.pharmacyId);
       addToast('Marked as not available — calling next pharmacy', 'info');
       setActiveCall(null);
+      activeCallRestoredRef.current = false;
       setCallPhase('ringing');
     } catch {
       addToast('Failed to update status', 'error');
@@ -272,6 +295,7 @@ export default function SearchPage() {
       if (activeCall) {
         disconnect();
         setActiveCall(null);
+        activeCallRestoredRef.current = false;
       }
       await searchApi.cancel(searchId);
       addToast('Search cancelled', 'info');
@@ -354,13 +378,12 @@ export default function SearchPage() {
   }
 
   // Deduplicate pharmacies by name+address (OSM can return both node + way for same location)
-  const seen = new Set<string>();
+  // When duplicates exist, prefer the one with an active call status
+  const seen = new Map<string, number>();
   const pharmacies: PharmacyItem[] = [];
   for (const p of search.pharmacies) {
     const key = `${p.pharmacyName.toLowerCase()}|${p.address.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    pharmacies.push({
+    const item: PharmacyItem = {
       pharmacyId: p.pharmacyId,
       pharmacyName: p.pharmacyName,
       address: p.address,
@@ -370,7 +393,15 @@ export default function SearchPage() {
       hasMedication: p.hasMedication,
       callId: p.callId ?? p.pharmacyId,
       distance: p.distance,
-    });
+    };
+    const existingIdx = seen.get(key);
+    if (existingIdx === undefined) {
+      seen.set(key, pharmacies.length);
+      pharmacies.push(item);
+    } else if (item.status !== 'pending' && pharmacies[existingIdx]?.status === 'pending') {
+      // Replace pending duplicate with the one that has an active status
+      pharmacies[existingIdx] = item;
+    }
   }
 
   return (

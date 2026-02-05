@@ -227,6 +227,7 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
       // Get real-time status from tracker
       const summary = await pharmacyTracker.getSearchSummary(id);
       const checklist = await pharmacyTracker.getChecklist(id);
+      const activeCall = await notificationService.getActiveCall(id);
 
       // Create a map of pharmacy data from DB results
       const pharmacyDataMap = new Map(
@@ -284,6 +285,13 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
           latitude: search.latitude,
           longitude: search.longitude,
         },
+        // Include active call for late-joining clients (race condition fix)
+        activeCall: activeCall ? {
+          callId: activeCall.callId,
+          pharmacyId: activeCall.pharmacyId,
+          pharmacyName: activeCall.pharmacyName,
+          conferenceName: activeCall.conferenceName,
+        } : null,
       });
     }
   );
@@ -402,7 +410,7 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
 
       await pharmacyTracker.markMedicationNotFound(pharmacy.searchId, id);
 
-      // Clear active call and start next pharmacy call
+      // Clear active call, then start next pharmacy call
       await notificationService.clearActiveCall(pharmacy.searchId);
       void callOrchestrator.startNextCall(pharmacy.searchId).catch((err) => {
         searchLogger.error({ err, searchId: pharmacy.searchId }, 'Failed to start next call');

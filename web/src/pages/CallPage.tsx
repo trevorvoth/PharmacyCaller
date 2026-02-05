@@ -59,7 +59,7 @@ export default function CallPage() {
   // Connect to Twilio when device is ready
   useEffect(() => {
     if (deviceState === 'ready' && pageState === 'connecting' && call) {
-      connect(`conference:${call.searchId}:${callId}`);
+      connect(`call-${callId}`);
     }
   }, [deviceState, pageState, call, callId, connect]);
 

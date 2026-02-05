@@ -333,10 +333,10 @@ export const pharmacyTracker = {
       pharmacyName: pharmacy.pharmacyName,
     }, 'Medication not found at pharmacy - call completed');
 
-    // Start calling the next pharmacy (this may add new pharmacies from reserves/pagination)
-    await callOrchestrator.startNextCall(searchId);
+    // Note: startNextCall is called by the route handler after clearActiveCall
+    // to avoid duplicate calls and ensure proper ordering.
 
-    // Re-fetch state since startNextCall may have added new pharmacies
+    // Re-fetch state to check if all pharmacies have been checked
     const updatedState = await this.getState(searchId);
     if (!updatedState) return;
 
