@@ -116,9 +116,9 @@ export const audioBridgeManager = {
           outputAudioFormat: 'g711_ulaw',
           turnDetection: {
             type: 'server_vad',
-            threshold: 0.5,
-            prefixPaddingMs: 300,
-            silenceDurationMs: 500,
+            threshold: 0.6,
+            prefixPaddingMs: 500,
+            silenceDurationMs: 1500,
           },
         },
       });

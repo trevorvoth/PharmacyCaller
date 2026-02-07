@@ -19,6 +19,7 @@ const StartSearchSchema = z.object({
   maxPharmacies: z.number().min(1).max(100).optional().default(50),
   chainFilter: z.array(z.string()).optional(), // Filter by pharmacy chains (e.g., ['CVS', 'Walgreens'])
   openNow: z.boolean().optional(), // Only include currently open pharmacies
+  useAiMenuAssistant: z.boolean().optional().default(true), // Use AI to navigate IVR menus
 });
 
 const MarkFoundSchema = z.object({
@@ -50,7 +51,7 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      const { medicationQuery, latitude, longitude, radiusMeters, chainFilter, openNow } = parseResult.data;
+      const { medicationQuery, latitude, longitude, radiusMeters, chainFilter, openNow, useAiMenuAssistant } = parseResult.data;
 
       searchLogger.info({
         userId: user.userId,
@@ -59,6 +60,7 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
         longitude,
         chainFilter,
         openNow,
+        useAiMenuAssistant,
       }, 'Starting pharmacy search');
 
       try {
@@ -69,6 +71,7 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
             medicationQuery,
             latitude,
             longitude,
+            useAiMenuAssistant,
           },
         });
 
@@ -157,6 +160,7 @@ export async function searchRoutes(app: FastifyInstance): Promise<void> {
           searchId: search.id,
           medicationQuery,
           pharmacies: callablePharmacies,
+          useAiMenuAssistant,
         });
 
         // Update user's daily search count

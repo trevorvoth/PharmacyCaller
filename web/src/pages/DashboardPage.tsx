@@ -6,6 +6,7 @@ import Input from '../components/Input';
 import Card, { CardContent } from '../components/Card';
 import ChainFilter from '../components/ChainFilter';
 import OpenNowFilter from '../components/OpenNowFilter';
+import AiMenuAssistantToggle from '../components/AiMenuAssistantToggle';
 
 interface SearchHistoryItem {
   id: string;
@@ -28,6 +29,10 @@ export default function DashboardPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedChains, setSelectedChains] = useState<string[]>([]);
   const [openNow, setOpenNow] = useState(false);
+  const [useAiMenuAssistant, setUseAiMenuAssistant] = useState<boolean>(() => {
+    const stored = localStorage.getItem('aiMenuAssistant');
+    return stored === null ? true : stored === 'true';
+  });
 
   useEffect(() => {
     if ('geolocation' in navigator) {
@@ -59,6 +64,11 @@ export default function DashboardPage() {
       });
   }, []);
 
+  // Persist AI Menu Assistant preference to localStorage
+  useEffect(() => {
+    localStorage.setItem('aiMenuAssistant', String(useAiMenuAssistant));
+  }, [useAiMenuAssistant]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
@@ -82,6 +92,7 @@ export default function DashboardPage() {
         longitude: location.longitude,
         chainFilter: selectedChains.length > 0 ? selectedChains : undefined,
         openNow: openNow || undefined,
+        useAiMenuAssistant,
       };
 
       const res = await searchApi.start(data);
@@ -141,9 +152,9 @@ export default function DashboardPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
               <span>{showFilters ? 'Hide filters' : 'Show filters'}</span>
-              {(selectedChains.length > 0 || openNow) && (
+              {(selectedChains.length > 0 || openNow || !useAiMenuAssistant) && (
                 <span className="ml-2 px-1.5 py-0.5 text-xs bg-primary-100 dark:bg-primary-900 text-primary-600 dark:text-primary-400 rounded">
-                  {selectedChains.length + (openNow ? 1 : 0)} active
+                  {selectedChains.length + (openNow ? 1 : 0) + (!useAiMenuAssistant ? 1 : 0)} active
                 </span>
               )}
             </button>
@@ -151,7 +162,13 @@ export default function DashboardPage() {
             {/* Filters Panel */}
             {showFilters && (
               <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                <OpenNowFilter isEnabled={openNow} onChange={setOpenNow} />
+                <AiMenuAssistantToggle
+                  isEnabled={useAiMenuAssistant}
+                  onChange={setUseAiMenuAssistant}
+                />
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <OpenNowFilter isEnabled={openNow} onChange={setOpenNow} />
+                </div>
                 <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                   <ChainFilter selectedChains={selectedChains} onChange={setSelectedChains} />
                 </div>

@@ -26,6 +26,22 @@ export interface RealtimeEvent {
   response?: {
     id: string;
     status: string;
+    status_details?: {
+      type?: string;
+      reason?: string;
+      error?: {
+        type: string;
+        message: string;
+      };
+    };
+    output?: Array<{
+      type: string;
+      id?: string;
+      content?: Array<{
+        type: string;
+        transcript?: string;
+      }>;
+    }>;
   };
   delta?: string;
   transcript?: string; // For input transcription completed events
@@ -179,6 +195,22 @@ export class OpenAIRealtimeClient extends EventEmitter {
 
       case 'response.function_call_arguments.done':
         // Handle function calls for IVR navigation
+        break;
+
+      case 'response.done':
+        // Log response completion with full details for debugging
+        realtimeLogger.info({
+          responseId: event.response?.id,
+          status: event.response?.status,
+          statusDetails: event.response?.status_details,
+          outputCount: event.response?.output?.length ?? 0,
+          outputTypes: event.response?.output?.map(o => o.type),
+        }, 'Response completed');
+        break;
+
+      case 'conversation.item.input_audio_transcription.failed':
+        // Log transcription failures with details
+        realtimeLogger.warn({ error: event.error }, 'Input audio transcription failed');
         break;
 
       case 'error':

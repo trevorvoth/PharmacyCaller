@@ -127,17 +127,22 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
       const query = request.query as Record<string, string>;
       const callId = query?.callId ?? 'unknown';
 
+      // Check call state to see if AI is enabled for this specific call
+      const callData = await callStateMachine.getState(callId);
+      const useAiMenuAssistant = callData?.metadata?.useAiMenuAssistant ?? true;
+
       webhookLogger.info({
         callId,
         callSid: CallSid,
         demoMode: env.DEMO_MODE,
         troubleshootMode: env.TROUBLESHOOT_MODE,
+        useAiMenuAssistant,
       }, 'Processing voice webhook');
 
       let twiml: string;
 
-      if (env.DEMO_MODE) {
-        // Demo mode: put the pharmacy into a conference directly (no AI)
+      if (env.DEMO_MODE || !useAiMenuAssistant) {
+        // Direct mode (demo or AI disabled): put the pharmacy into a conference directly
         // The user's browser will join the same conference via the client-voice webhook
         const conferenceName = `call-${callId}`;
 
@@ -145,7 +150,8 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
           callId,
           callSid: CallSid,
           conferenceName,
-        }, 'Demo mode: connecting pharmacy to conference');
+          reason: env.DEMO_MODE ? 'demo_mode' : 'ai_disabled',
+        }, 'Direct mode: connecting pharmacy to conference (no AI)');
 
         twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -263,8 +269,21 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
         return reply.status(200).send({ received: true });
       }
 
+      // Check if AI Menu Assistant is disabled for this call
+      const useAiMenuAssistant = callData.metadata?.useAiMenuAssistant ?? true;
+
       // Map Twilio status to our state
-      const newState = mapTwilioStatusToCallState(CallStatus);
+      let newState = mapTwilioStatusToCallState(CallStatus);
+
+      // Special handling for AI-disabled calls: when call becomes 'in-progress',
+      // treat it as HUMAN_DETECTED so the frontend shows the connect overlay
+      if (!useAiMenuAssistant && CallStatus === 'in-progress') {
+        newState = CallState.HUMAN_DETECTED;
+        webhookLogger.info({
+          callId,
+          callSid: CallSid,
+        }, 'AI disabled: treating in-progress as HUMAN_DETECTED');
+      }
 
       if (newState && callStateMachine.isValidTransition(callData.state, newState)) {
         await callStateMachine.transition(callId, newState, {
@@ -285,6 +304,23 @@ export async function twilioWebhookRoutes(app: FastifyInstance): Promise<void> {
           status: newState,
           previousStatus: callData.state,
         });
+
+        // For AI-disabled calls: send call_connect notification when answered
+        // This triggers the frontend overlay to let user connect to the conference
+        if (!useAiMenuAssistant && newState === CallState.HUMAN_DETECTED) {
+          const conferenceName = `call-${callId}`;
+          await notificationService.sendCallConnect(callData.searchId, {
+            searchId: callData.searchId,
+            callId,
+            pharmacyId: callData.pharmacyId,
+            pharmacyName: callData.pharmacyName,
+            conferenceName,
+          });
+          webhookLogger.info({
+            callId,
+            conferenceName,
+          }, 'AI disabled: sent call_connect notification');
+        }
 
         // Track metrics for terminal states
         if (CallStatus === 'completed') {

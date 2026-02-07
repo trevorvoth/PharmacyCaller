@@ -46,15 +46,16 @@ model Call {
 }
 
 model PharmacySearch {
-  id              String        @id @default(cuid())
-  userId          String
-  medicationQuery String
-  latitude        Float
-  longitude       Float
-  status          SearchStatus  @default(ACTIVE)
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  completedAt     DateTime?
+  id                  String        @id @default(cuid())
+  userId              String
+  medicationQuery     String
+  latitude            Float
+  longitude           Float
+  status              SearchStatus  @default(ACTIVE)
+  useAiMenuAssistant  Boolean       @default(true)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  completedAt         DateTime?
 
   user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   results         PharmacyResult[]

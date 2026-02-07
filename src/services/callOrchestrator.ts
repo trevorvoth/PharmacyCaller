@@ -37,6 +37,7 @@ export interface SearchState {
   completedAt: number | null;
   result: 'found' | 'not_found' | 'cancelled' | null;
   foundAt: string | null; // pharmacy name where medication was found
+  useAiMenuAssistant: boolean; // Whether to use AI for IVR navigation
 }
 
 export interface CallProgress {
@@ -59,8 +60,9 @@ export const callOrchestrator = {
     searchId: string;
     medicationQuery: string;
     pharmacies: PharmacyToCall[];
+    useAiMenuAssistant?: boolean;
   }): Promise<SearchState> {
-    const { userId, searchId, medicationQuery, pharmacies } = params;
+    const { userId, searchId, medicationQuery, pharmacies, useAiMenuAssistant = true } = params;
 
     orchestratorLogger.info({
       searchId,
@@ -83,6 +85,7 @@ export const callOrchestrator = {
       completedAt: null,
       result: null,
       foundAt: null,
+      useAiMenuAssistant,
     };
 
     // Store search state
@@ -90,7 +93,7 @@ export const callOrchestrator = {
 
     // Initiate calls in parallel
     const callPromises = pharmaciesToCall.map((pharmacy) =>
-      this.initiatePharmacyCall(searchId, pharmacy, medicationQuery)
+      this.initiatePharmacyCall(searchId, pharmacy, medicationQuery, useAiMenuAssistant)
     );
 
     const results = await Promise.allSettled(callPromises);
@@ -130,7 +133,8 @@ export const callOrchestrator = {
   async initiatePharmacyCall(
     searchId: string,
     pharmacy: PharmacyToCall,
-    medicationQuery: string
+    medicationQuery: string,
+    useAiMenuAssistant: boolean = true
   ): Promise<CallStateData | null> {
     const callId = uuidv4();
 
@@ -153,6 +157,7 @@ export const callOrchestrator = {
         metadata: {
           medicationQuery,
           pharmacyAddress: pharmacy.address,
+          useAiMenuAssistant,
         },
       });
 
@@ -480,7 +485,7 @@ export const callOrchestrator = {
     }, 'Starting next pharmacy call');
 
     // Initiate the call
-    const result = await this.initiatePharmacyCall(searchId, pharmacyToCall, searchState.medicationQuery);
+    const result = await this.initiatePharmacyCall(searchId, pharmacyToCall, searchState.medicationQuery, searchState.useAiMenuAssistant);
 
     if (result) {
       searchState.callIds.push(result.callId);

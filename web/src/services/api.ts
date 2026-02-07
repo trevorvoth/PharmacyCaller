@@ -34,6 +34,7 @@ export interface StartSearchRequest {
   maxPharmacies?: number;
   chainFilter?: string[];
   openNow?: boolean;
+  useAiMenuAssistant?: boolean;
 }
 
 export const PHARMACY_CHAINS = [
